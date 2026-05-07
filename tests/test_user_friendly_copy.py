@@ -1,10 +1,8 @@
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import app
 from voice_lab.ui_config import QUICK_START_STEPS, format_candidate_summary
+
+FRONTEND_PAGE = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app" / "page.tsx"
 
 
 def test_user_copy_uses_save_not_approve_language():
@@ -16,8 +14,8 @@ def test_user_copy_uses_save_not_approve_language():
     assert "마음에 드는" in combined
 
 
-def test_candidate_cards_have_equalizing_css_class():
-    css = app.CUSTOM_CSS
-    assert ".candidate-card" in css
-    assert "min-height" in css
-    assert "height: 96px" in css
+def test_frontend_copy_uses_plain_user_language():
+    page = FRONTEND_PAGE.read_text(encoding="utf-8")
+    assert "새 음성 만들기" in page
+    assert "마음에 드는 음성 저장" in page
+    assert "후보 1 승인" not in page

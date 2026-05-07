@@ -1,21 +1,18 @@
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import app
+FRONTEND_PAGE = Path(__file__).resolve().parents[1] / "frontend" / "src" / "app" / "page.tsx"
 
 
-def test_custom_css_uses_readable_light_theme_without_dark_hero():
-    css = app.CUSTOM_CSS
-    assert "linear-gradient" not in css
-    assert "background: #111827" not in css
-    assert "#0f172a" not in css
-    assert "#ffffff" in css
-    assert "color: #111827" in css
+def test_next_ui_uses_readable_light_product_surface():
+    page = FRONTEND_PAGE.read_text(encoding="utf-8")
+    assert "bg-white" in page
+    assert "text-gray-950" in page
+    assert "linear-gradient" not in page
+    assert "후보 듣고 승인하기" not in page
 
 
-def test_custom_css_does_not_force_tiny_or_colored_body_text():
-    css = app.CUSTOM_CSS
-    assert "font-size: 30px" not in css
-    assert "color: #dbeafe" not in css
+def test_next_ui_uses_vertical_voice_results_not_horizontal_candidate_cards():
+    page = FRONTEND_PAGE.read_text(encoding="utf-8")
+    assert "마음에 드는 음성 저장" in page
+    assert "가로 카드 대신 세로 목록" in page
+    assert "음성 {candidate.index}" in page
