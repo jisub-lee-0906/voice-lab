@@ -52,7 +52,7 @@ class GenerateRequest(BaseModel):
     emotion: str = "기본"
     line_id: str = "line_001"
     text: str = Field(min_length=1)
-    text_lang: str = "auto"
+    text_lang: str = "ko"
     prompt_text: str = ""
     prompt_lang: str = "auto"
     base_seed: int = 1000
@@ -123,6 +123,15 @@ def validate_reference_window(source: Path, start_seconds: float, duration_secon
         raise HTTPException(status_code=400, detail=f"시작 초가 파일 길이({source_duration:.2f}초)를 넘어갑니다.")
     if end > source_duration:
         raise HTTPException(status_code=400, detail=f"선택한 구간 끝({end:.2f}초)이 파일 길이({source_duration:.2f}초)를 넘어갑니다.")
+
+
+def normalize_generation_request(request: GenerateRequest) -> dict[str, str]:
+    return {
+        "text": request.text.strip(),
+        "text_lang": (request.text_lang or "ko").strip() or "ko",
+        "prompt_text": request.prompt_text.strip(),
+        "prompt_lang": (request.prompt_lang or "auto").strip() or "auto",
+    }
 
 
 def ensure_api(api_url: str, autostart: bool) -> str:
@@ -207,7 +216,7 @@ def generate(request: GenerateRequest):
     ref_audio = Path(request.ref_audio_path).expanduser()
     if not ref_audio.exists():
         raise HTTPException(status_code=404, detail=f"참조 WAV가 없습니다: {ref_audio}")
-    prompt_text = request.prompt_text.strip() or request.text
+    normalized = normalize_generation_request(request)
     line_id = request.line_id.strip() or f"line_{int(time.time())}"
     try:
         api_status = ensure_api(request.api_url or DEFAULT_API_URL, request.autostart_api)
@@ -216,11 +225,11 @@ def generate(request: GenerateRequest):
             character=request.voice_name or "default",
             emotion=request.emotion,
             line_id=line_id,
-            text=request.text,
-            text_lang=request.text_lang,
+            text=normalized["text"],
+            text_lang=normalized["text_lang"],
             ref_audio=ref_audio,
-            prompt_text=prompt_text,
-            prompt_lang=request.prompt_lang,
+            prompt_text=normalized["prompt_text"],
+            prompt_lang=normalized["prompt_lang"],
             base_seed=request.base_seed,
             count=request.candidate_count,
             api_url=request.api_url or DEFAULT_API_URL,

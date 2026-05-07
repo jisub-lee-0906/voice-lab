@@ -116,7 +116,7 @@ export default function Home() {
           prompt_text: promptText,
           candidate_count: 3,
           base_seed: 1000,
-          text_lang: "auto",
+          text_lang: "ko",
           prompt_lang: "auto",
           autostart_api: true,
         }),
@@ -226,7 +226,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <label className="space-y-2 text-sm font-medium text-gray-700">읽힐 대사<Textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="이 목소리로 읽힐 대사를 입력하세요." /></label>
-                <label className="space-y-2 text-sm font-medium text-gray-700">참조 음성의 실제 대사<Textarea className="min-h-20" value={promptText} onChange={(e) => setPromptText(e.target.value)} placeholder="모르면 비워도 됩니다. 입력하면 품질이 좋아질 수 있어요." /></label>
+                <label className="space-y-2 text-sm font-medium text-gray-700">참조 음성의 실제 대사<Textarea className="min-h-20" value={promptText} onChange={(e) => setPromptText(e.target.value)} placeholder="참조 음성의 실제 대사를 모르면 비워두세요. 읽힐 대사를 여기에 다시 넣으면 품질이 나빠질 수 있어요." /></label>
                 <Button size="lg" className="w-full" onClick={generateVoice} disabled={!canGenerate}>
                   {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Music2 className="h-5 w-5" />} 새 음성 만들기
                 </Button>
