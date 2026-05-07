@@ -47,12 +47,17 @@ export default function Home() {
   const [savedPath, setSavedPath] = useState("");
 
   const canGenerate = useMemo(() => Boolean(ref?.path && text.trim() && !busy), [ref, text, busy]);
+  const hasAudioSource = Boolean(file || existingPath.trim());
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     setFile(event.target.files?.[0] ?? null);
   }
 
   async function makeReference() {
+    if (!hasAudioSource) {
+      setStatus("음성 파일이나 기존 파일 경로를 먼저 넣어주세요.");
+      return;
+    }
     setBusy(true);
     setStatus("참조 음성을 준비하는 중...");
     try {
@@ -176,18 +181,19 @@ export default function Home() {
                 <CardDescription>긴 파일에서 3~10초 구간만 잘라 참조 음성으로 씁니다.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center transition hover:bg-gray-100">
+                <label htmlFor="voice-file-input" className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center transition hover:bg-gray-100">
                   <Upload className="mb-3 h-7 w-7 text-gray-500" />
                   <span className="font-semibold text-gray-900">음성 파일 선택</span>
-                  <span className="mt-1 text-sm text-gray-500">{file ? file.name : "mp3, wav, ogg 파일"}</span>
-                  <input type="file" accept="audio/*" className="hidden" onChange={onFileChange} />
+                  <span className="mt-1 text-sm text-gray-500">{file ? `선택된 파일: ${file.name}` : "mp3, wav, ogg 파일"}</span>
+                  <span className="mt-2 text-xs text-gray-400">파일을 고른 뒤 참조 음성 만들기를 눌러주세요.</span>
                 </label>
+                <input id="voice-file-input" type="file" accept="audio/*" className="sr-only" onChange={onFileChange} />
                 <label className="space-y-2 text-sm font-medium text-gray-700">기존 파일 경로<Input value={existingPath} onChange={(e) => setExistingPath(e.target.value)} placeholder="/mnt/c/Users/Desktop/Downloads/audio.mp3" /></label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-2 text-sm font-medium text-gray-700">시작 초<Input type="number" value={startSeconds} onChange={(e) => setStartSeconds(Number(e.target.value))} /></label>
                   <label className="space-y-2 text-sm font-medium text-gray-700">길이 초<Input type="number" step="0.1" value={durationSeconds} onChange={(e) => setDurationSeconds(Number(e.target.value))} /></label>
                 </div>
-                <Button variant="secondary" className="w-full" onClick={makeReference} disabled={busy}>
+                <Button variant="secondary" className="w-full" onClick={makeReference} disabled={busy || !hasAudioSource}>
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic2 className="h-4 w-4" />} 참조 음성 만들기
                 </Button>
               </CardContent>
