@@ -10,7 +10,7 @@ GPT-SoVITS 기반 로컬 음성 제작 도구입니다.
 
 ```bash
 cd /home/jisub-lee/workspace/voice-lab
-uv run python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+uv run python -m uvicorn backend.main:app --host 127.0.0.1 --port 8100
 ```
 
 터미널 2: frontend
@@ -23,13 +23,13 @@ npm run dev
 브라우저:
 
 ```text
-http://127.0.0.1:3000
+http://127.0.0.1:3100
 ```
 
 API 상태 확인:
 
 ```text
-http://127.0.0.1:8000/api/health
+http://127.0.0.1:8100/api/health
 ```
 
 ## 사용 순서

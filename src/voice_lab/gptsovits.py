@@ -8,7 +8,7 @@ from typing import Any
 import requests
 
 
-DEFAULT_API_URL = "http://127.0.0.1:9880"
+DEFAULT_API_URL = "http://127.0.0.1:9100"
 
 
 def generate_seeds(base_seed: int, count: int) -> list[int]:
@@ -59,7 +59,7 @@ def wait_for_api(api_url: str = DEFAULT_API_URL, timeout_seconds: float = 90.0) 
     raise TimeoutError(f"GPT-SoVITS API did not become ready: {last_error}")
 
 
-def start_api(repo_dir: Path, python_bin: Path, host: str = "127.0.0.1", port: int = 9880) -> subprocess.Popen:
+def start_api(repo_dir: Path, python_bin: Path, host: str = "127.0.0.1", port: int = 9100) -> subprocess.Popen:
     command = [
         str(python_bin),
         "api_v2.py",
