@@ -30,14 +30,30 @@ async function readErrorMessage(response: Response) {
   return response.statusText || "요청 처리 중 오류가 발생했습니다.";
 }
 
+function parseSeconds(value: string, label: string, min: number, max?: number) {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${label}를 입력하세요.`);
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) throw new Error(`${label}는 숫자로 입력하세요.`);
+  if (parsed < min) {
+    if (label === "시작 초") throw new Error("시작 초는 0 이상이어야 합니다.");
+    throw new Error(`${label}는 ${min} 이상이어야 합니다.`);
+  }
+  if (max !== undefined && parsed > max) {
+    if (label === "길이 초") throw new Error("길이 초는 3~10초 사이여야 합니다.");
+    throw new Error(`${label}는 ${min}~${max}초 사이여야 합니다.`);
+  }
+  return parsed;
+}
+
 export default function Home() {
   const [voiceName, setVoiceName] = useState("default");
   const [lineId, setLineId] = useState("line_001");
   const [emotion, setEmotion] = useState("기본");
   const [file, setFile] = useState<File | null>(null);
   const [existingPath, setExistingPath] = useState("");
-  const [startSeconds, setStartSeconds] = useState(0);
-  const [durationSeconds, setDurationSeconds] = useState(9.5);
+  const [startSeconds, setStartSeconds] = useState("0");
+  const [durationSeconds, setDurationSeconds] = useState("9.5");
   const [text, setText] = useState("");
   const [promptText, setPromptText] = useState("");
   const [ref, setRef] = useState<ReferenceResponse | null>(null);
@@ -61,11 +77,13 @@ export default function Home() {
     setBusy(true);
     setStatus("참조 음성을 준비하는 중...");
     try {
+      const start = parseSeconds(startSeconds, "시작 초", 0);
+      const duration = parseSeconds(durationSeconds, "길이 초", 3, 10);
       const form = new FormData();
       form.append("voice_name", voiceName);
       form.append("emotion", emotion);
-      form.append("start_seconds", String(startSeconds));
-      form.append("duration_seconds", String(durationSeconds));
+      form.append("start_seconds", String(start));
+      form.append("duration_seconds", String(duration));
       form.append("existing_path", existingPath);
       if (file) form.append("audio_file", file);
       const response = await fetch(`${API_BASE}/api/reference`, { method: "POST", body: form });
@@ -190,8 +208,8 @@ export default function Home() {
                 <input id="voice-file-input" type="file" accept="audio/*" className="sr-only" onChange={onFileChange} />
                 <label className="space-y-2 text-sm font-medium text-gray-700">기존 파일 경로<Input value={existingPath} onChange={(e) => setExistingPath(e.target.value)} placeholder="/mnt/c/Users/Desktop/Downloads/audio.mp3" /></label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-2 text-sm font-medium text-gray-700">시작 초<Input type="number" value={startSeconds} onChange={(e) => setStartSeconds(Number(e.target.value))} /></label>
-                  <label className="space-y-2 text-sm font-medium text-gray-700">길이 초<Input type="number" step="0.1" value={durationSeconds} onChange={(e) => setDurationSeconds(Number(e.target.value))} /></label>
+                  <label className="space-y-2 text-sm font-medium text-gray-700">시작 초<Input type="number" min="0" step="0.1" value={startSeconds} onChange={(e) => setStartSeconds(e.target.value)} /></label>
+                  <label className="space-y-2 text-sm font-medium text-gray-700">길이 초<Input type="number" min="3" max="10" step="0.1" value={durationSeconds} onChange={(e) => setDurationSeconds(e.target.value)} /></label>
                 </div>
                 <Button variant="secondary" className="w-full" onClick={makeReference} disabled={busy || !hasAudioSource}>
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic2 className="h-4 w-4" />} 참조 음성 만들기

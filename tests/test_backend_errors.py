@@ -10,6 +10,7 @@ def test_reference_unexpected_errors_return_korean_detail(monkeypatch, tmp_path)
     def boom(*args, **kwargs):
         raise RuntimeError("ffmpeg crashed")
 
+    monkeypatch.setattr(backend, "probe_duration", lambda path: 20.0)
     monkeypatch.setattr(backend, "cut_reference", boom)
     client = TestClient(backend.app)
     response = client.post(

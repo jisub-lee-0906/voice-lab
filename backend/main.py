@@ -102,6 +102,29 @@ def media_url(path: str | Path) -> str:
     return str(path)
 
 
+def validate_reference_window(source: Path, start_seconds: float, duration_seconds: float) -> None:
+    try:
+        start = float(start_seconds)
+        duration = float(duration_seconds)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="시작 초와 길이 초는 숫자로 입력하세요.") from exc
+    if start < 0:
+        raise HTTPException(status_code=400, detail="시작 초는 0 이상이어야 합니다.")
+    try:
+        validate_reference_duration(duration)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="길이 초는 3~10초 사이여야 합니다.") from exc
+    try:
+        source_duration = probe_duration(source)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"원본 음성 길이를 확인하지 못했습니다: {exc}") from exc
+    end = start + duration
+    if start >= source_duration:
+        raise HTTPException(status_code=400, detail=f"시작 초가 파일 길이({source_duration:.2f}초)를 넘어갑니다.")
+    if end > source_duration:
+        raise HTTPException(status_code=400, detail=f"선택한 구간 끝({end:.2f}초)이 파일 길이({source_duration:.2f}초)를 넘어갑니다.")
+
+
 def ensure_api(api_url: str, autostart: bool) -> str:
     global API_PROCESS
     try:
@@ -143,11 +166,11 @@ def create_reference(
     existing_path: str = Form(""),
     audio_file: UploadFile | None = File(None),
 ):
-    validate_reference_duration(duration_seconds)
     source: Path
-    if audio_file is not None and audio_file.filename:
+    upload_filename = getattr(audio_file, "filename", "") if audio_file is not None else ""
+    if audio_file is not None and upload_filename:
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-        filename = sanitize_id(Path(audio_file.filename).stem) + Path(audio_file.filename).suffix.lower()
+        filename = sanitize_id(Path(upload_filename).stem) + Path(upload_filename).suffix.lower()
         source = UPLOADS_DIR / f"{int(time.time())}_{filename}"
         with source.open("wb") as out:
             shutil.copyfileobj(audio_file.file, out)
@@ -157,10 +180,15 @@ def create_reference(
         raise HTTPException(status_code=400, detail="음성 파일을 업로드하거나 기존 파일 경로를 입력하세요.")
     if not source.exists():
         raise HTTPException(status_code=404, detail=f"음성 파일이 없습니다: {source}")
+    validate_reference_window(source, start_seconds, duration_seconds)
     try:
         ref_path = build_clip_path(ROOT, voice_name, emotion, source)
         cut_reference(source, ref_path, start_seconds, duration_seconds)
         duration = probe_duration(ref_path)
+        try:
+            validate_reference_duration(duration)
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail=f"실제 참조 길이({duration:.2f}초)가 GPT-SoVITS 허용 범위(3~10초)를 벗어났습니다. 시작 초와 길이 초를 다시 조정하세요.") from exc
         return ReferenceResponse(
             path=str(ref_path),
             url=media_url(ref_path),
