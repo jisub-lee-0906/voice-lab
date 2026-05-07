@@ -32,9 +32,10 @@ def test_default_help_text_warns_emotion_comes_from_reference_voice():
     assert "감정" in DEFAULT_HELP_TEXT
 
 
-def test_format_candidate_summary_has_clickable_approval_guidance():
+def test_format_candidate_summary_has_save_guidance():
     results = [{"seed": 1000, "ogg": "/tmp/a.ogg"}, {"seed": 1001, "ogg": "/tmp/b.ogg"}]
     summary = format_candidate_summary("API 준비 완료", results)
     assert "후보 1" in summary
-    assert "승인" in summary
+    assert "저장" in summary
+    assert "승인" not in summary
     assert "/tmp/a.ogg" in summary

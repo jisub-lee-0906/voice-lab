@@ -69,6 +69,21 @@ CUSTOM_CSS = """
   color: #111827;
   line-height: 1.5;
 }
+.candidate-card {
+  min-height: 178px;
+  height: 100%;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+.candidate-card .wrap,
+.candidate-card audio {
+  width: 100%;
+}
+.candidate-card audio {
+  height: 96px;
+}
 """
 
 
@@ -182,14 +197,14 @@ def generate_voice(
 
 def approve_take(selected_take: str, voice_name: str, line_id: str) -> str:
     if not selected_take:
-        raise gr.Error("승인할 후보가 없습니다. 먼저 후보를 생성하세요.")
+        raise gr.Error("저장할 음성이 없습니다. 먼저 음성을 생성하세요.")
     source = Path(selected_take).expanduser()
     if not source.exists():
-        raise gr.Error(f"후보 파일이 없습니다: {source}")
+        raise gr.Error(f"음성 파일이 없습니다: {source}")
     dest = ROOT / "approved" / sanitize_id(voice_name or "default") / f"{sanitize_id(line_id or source.stem)}.ogg"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, dest)
-    return f"승인 완료: {dest}"
+    return f"저장 완료: {dest}"
 
 
 def build_app() -> gr.Blocks:
@@ -198,7 +213,7 @@ def build_app() -> gr.Blocks:
             f"<style>{CUSTOM_CSS}</style>"
             "<div class='voice-lab-hero'>"
             "<h1>Voice Lab</h1>"
-            "<p>음성 파일, 감정, 대사만 넣으면 GPT-SoVITS로 후보 음성을 만드는 로컬 도구입니다.</p>"
+            "<p>음성 파일, 느낌, 대사만 넣으면 GPT-SoVITS로 새 음성을 만드는 로컬 도구입니다.</p>"
             "<p>처음 쓰는 사람도 위에서 아래로만 진행하면 됩니다.</p>"
             "</div>"
         )
@@ -212,7 +227,7 @@ def build_app() -> gr.Blocks:
                 gr.Markdown("## 1. 기본 정보")
                 voice_name = gr.Textbox(label="목소리 이름", value="default", placeholder="예: default, narrator, character_a")
                 line_id = gr.Textbox(label="대사 ID", value="line_001", placeholder="예: line_001")
-                emotion = gr.Radio(label="감정", choices=EMOTION_BUTTONS, value="기본")
+                emotion = gr.Radio(label="원하는 느낌", choices=EMOTION_BUTTONS, value="기본")
 
                 gr.Markdown("## 2. 음성 파일")
                 uploaded_audio = gr.Audio(label="음성 파일 업로드", type="filepath")
@@ -253,20 +268,21 @@ def build_app() -> gr.Blocks:
                 generate_btn = gr.Button("후보 음성 생성", variant="primary", size="lg")
                 generate_status = gr.Textbox(label="생성 상태", lines=8, interactive=False)
 
-        gr.Markdown("## 4. 후보 듣고 승인하기")
-        with gr.Row():
+        gr.Markdown("## 4. 마음에 드는 음성 저장하기")
+        gr.Markdown("생성된 음성을 들어보고, 마음에 드는 것만 최종 폴더에 저장하세요.")
+        with gr.Row(equal_height=True):
             candidate_outputs = []
             candidate_paths = []
             approve_buttons = []
             for idx in range(1, 6):
-                with gr.Column(scale=1):
-                    audio = gr.Audio(label=f"후보 {idx}", type="filepath")
-                    path_box = gr.Textbox(label=f"후보 {idx} 경로", visible=False)
-                    button = gr.Button(f"후보 {idx} 승인")
+                with gr.Column(scale=1, elem_classes=["candidate-card"]):
+                    audio = gr.Audio(label=f"음성 {idx}", type="filepath")
+                    path_box = gr.Textbox(label=f"음성 {idx} 경로", visible=False)
+                    button = gr.Button(f"음성 {idx} 저장")
                     candidate_outputs.append(audio)
                     candidate_paths.append(path_box)
                     approve_buttons.append(button)
-        approve_status = gr.Textbox(label="승인 상태", interactive=False)
+        approve_status = gr.Textbox(label="저장 상태", interactive=False)
 
         make_ref_btn.click(
             make_reference,
