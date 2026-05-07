@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Heavy/generated data: keep directory placeholders, ignore contents.
+generated/*
+!generated/.gitkeep
+approved/*
+!approved/.gitkeep
+exports/*
+!exports/.gitkeep
+refs/**/*.wav
+refs/**/*.mp3
+refs/**/*.ogg
+
+# GPT-SoVITS/models/venvs are local project-owned runtime assets, not git content.
+references/GPT-SoVITS
+.venv-gpt-sovits
