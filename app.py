@@ -29,28 +29,45 @@ API_PROCESS = None
 
 
 CUSTOM_CSS = """
-.gradio-container { max-width: 1180px !important; margin: auto !important; }
-.voice-lab-hero {
-  border-radius: 18px;
-  padding: 22px 24px;
-  background: linear-gradient(135deg, #20243a 0%, #111827 58%, #0f172a 100%);
-  color: #f8fafc;
-  margin-bottom: 14px;
+.gradio-container {
+  max-width: 1120px !important;
+  margin: auto !important;
+  color: #111827;
 }
-.voice-lab-hero h1 { margin: 0 0 8px 0; font-size: 30px; }
-.voice-lab-hero p { margin: 4px 0; color: #dbeafe; }
+.voice-lab-hero {
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  margin-bottom: 12px;
+}
+.voice-lab-hero h1 {
+  margin: 0 0 6px 0;
+  font-size: 28px;
+  line-height: 1.25;
+  color: #111827;
+}
+.voice-lab-hero p {
+  margin: 4px 0;
+  color: #374151;
+  line-height: 1.55;
+}
 .voice-lab-help {
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 12px 14px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  color: #7c2d12;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  line-height: 1.55;
 }
 .voice-lab-step {
-  border-radius: 14px;
-  padding: 12px 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  line-height: 1.5;
 }
 """
 
