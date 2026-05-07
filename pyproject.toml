@@ -11,6 +11,9 @@ dependencies = [
   "uvicorn[standard]>=0.38.0",
 ]
 
+[project.scripts]
+voice-lab = "voice_lab.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
