@@ -157,16 +157,21 @@ def create_reference(
         raise HTTPException(status_code=400, detail="음성 파일을 업로드하거나 기존 파일 경로를 입력하세요.")
     if not source.exists():
         raise HTTPException(status_code=404, detail=f"음성 파일이 없습니다: {source}")
-    ref_path = build_clip_path(ROOT, voice_name, emotion, source)
-    cut_reference(source, ref_path, start_seconds, duration_seconds)
-    duration = probe_duration(ref_path)
-    return ReferenceResponse(
-        path=str(ref_path),
-        url=media_url(ref_path),
-        duration=duration,
-        emotion=normalize_emotion(emotion),
-        message="참조 클립을 만들었습니다.",
-    )
+    try:
+        ref_path = build_clip_path(ROOT, voice_name, emotion, source)
+        cut_reference(source, ref_path, start_seconds, duration_seconds)
+        duration = probe_duration(ref_path)
+        return ReferenceResponse(
+            path=str(ref_path),
+            url=media_url(ref_path),
+            duration=duration,
+            emotion=normalize_emotion(emotion),
+            message="참조 클립을 만들었습니다.",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"참조 음성을 만들지 못했습니다: {exc}") from exc
 
 
 @app.post("/api/generate", response_model=GenerateResponse)
@@ -176,26 +181,31 @@ def generate(request: GenerateRequest):
         raise HTTPException(status_code=404, detail=f"참조 WAV가 없습니다: {ref_audio}")
     prompt_text = request.prompt_text.strip() or request.text
     line_id = request.line_id.strip() or f"line_{int(time.time())}"
-    api_status = ensure_api(request.api_url or DEFAULT_API_URL, request.autostart_api)
-    results = generate_candidates(
-        root=ROOT,
-        character=request.voice_name or "default",
-        emotion=request.emotion,
-        line_id=line_id,
-        text=request.text,
-        text_lang=request.text_lang,
-        ref_audio=ref_audio,
-        prompt_text=prompt_text,
-        prompt_lang=request.prompt_lang,
-        base_seed=request.base_seed,
-        count=request.candidate_count,
-        api_url=request.api_url or DEFAULT_API_URL,
-    )
-    candidates = [
-        Candidate(index=i, seed=item["seed"], wav=item["wav"], ogg=item["ogg"], url=media_url(item["ogg"]))
-        for i, item in enumerate(results, start=1)
-    ]
-    return GenerateResponse(message=api_status, candidates=candidates)
+    try:
+        api_status = ensure_api(request.api_url or DEFAULT_API_URL, request.autostart_api)
+        results = generate_candidates(
+            root=ROOT,
+            character=request.voice_name or "default",
+            emotion=request.emotion,
+            line_id=line_id,
+            text=request.text,
+            text_lang=request.text_lang,
+            ref_audio=ref_audio,
+            prompt_text=prompt_text,
+            prompt_lang=request.prompt_lang,
+            base_seed=request.base_seed,
+            count=request.candidate_count,
+            api_url=request.api_url or DEFAULT_API_URL,
+        )
+        candidates = [
+            Candidate(index=i, seed=item["seed"], wav=item["wav"], ogg=item["ogg"], url=media_url(item["ogg"]))
+            for i, item in enumerate(results, start=1)
+        ]
+        return GenerateResponse(message=api_status, candidates=candidates)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"음성 생성에 실패했습니다: {exc}") from exc
 
 
 @app.post("/api/save", response_model=SaveResponse)

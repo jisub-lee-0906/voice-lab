@@ -18,6 +18,18 @@ function mediaUrl(path: string) {
   return `${API_BASE}${path}`;
 }
 
+async function readErrorMessage(response: Response) {
+  try {
+    const data = await response.json();
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) return data.detail.map((item: { msg?: string } | unknown) => (typeof item === "object" && item && "msg" in item ? String(item.msg) : JSON.stringify(item))).join(" / ");
+  } catch {
+    const text = await response.text().catch(() => "");
+    if (text) return text;
+  }
+  return response.statusText || "요청 처리 중 오류가 발생했습니다.";
+}
+
 export default function Home() {
   const [voiceName, setVoiceName] = useState("default");
   const [lineId, setLineId] = useState("line_001");
@@ -52,7 +64,7 @@ export default function Home() {
       form.append("existing_path", existingPath);
       if (file) form.append("audio_file", file);
       const response = await fetch(`${API_BASE}/api/reference`, { method: "POST", body: form });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as ReferenceResponse;
       setRef(data);
       setStatus(`${data.message} (${data.duration.toFixed(2)}초)`);
@@ -86,7 +98,7 @@ export default function Home() {
           autostart_api: true,
         }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as GenerateResponse;
       setCandidates(data.candidates);
       setStatus(`${data.message} · ${data.candidates.length}개 음성을 만들었습니다.`);
@@ -106,7 +118,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source_path: candidate.ogg, voice_name: voiceName, line_id: lineId }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as { path: string; message: string };
       setSavedPath(data.path);
       setStatus(data.message);
