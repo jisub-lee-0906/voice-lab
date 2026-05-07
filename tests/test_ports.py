@@ -8,7 +8,8 @@ def test_frontend_dev_port_is_3100_and_api_base_is_8100():
     utils_ts = (ROOT / "frontend" / "src" / "lib" / "utils.ts").read_text(encoding="utf-8")
     assert "-p 3100" in package_json
     assert "-p 3000" not in package_json
-    assert "http://127.0.0.1:8100" in utils_ts
+    assert "http://127.0.0.1:8100" not in utils_ts
+    assert 'API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? ""' in utils_ts
     assert "http://127.0.0.1:8000" not in utils_ts
 
 
