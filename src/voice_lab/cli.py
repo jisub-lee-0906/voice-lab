@@ -49,6 +49,17 @@ def _probe(url: str, timeout: float) -> dict[str, Any]:
         return {"ok": False, "url": url, "error": str(exc)}
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    try:
+        response = requests.get(_url(args.backend, "/api/runtime"), timeout=args.timeout)
+        payload = _response_payload(response)
+        _print_json(payload)
+        return 0 if response.ok and payload.get("ok") is True else 1
+    except Exception as exc:
+        _print_json({"ok": False, "detail": str(exc)})
+        return 1
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     backend = _probe(_url(args.backend, "/api/health"), args.timeout)
     gptsovits = _probe(_url(args.gptsovits, "/docs"), args.timeout)
@@ -186,6 +197,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="voice-lab", description="Agent-friendly CLI for the local voice-lab FastAPI service.")
     _add_common_options(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    doctor = subparsers.add_parser("doctor", help="Check production readiness details from backend /api/runtime")
+    _add_common_options(doctor)
+    doctor.set_defaults(func=cmd_doctor)
 
     status = subparsers.add_parser("status", help="Check backend and GPT-SoVITS health")
     _add_common_options(status)

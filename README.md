@@ -51,7 +51,10 @@ http://127.0.0.1:8100/api/health
 ```bash
 cd /home/jisub-lee/workspace/voice-lab
 uv run voice-lab status
+uv run voice-lab doctor
 ```
+
+`doctor`는 backend, GPT-SoVITS, 필수 경로, 디스크 여유 공간을 JSON으로 점검합니다.
 
 참조 음성 만들기:
 
@@ -124,6 +127,16 @@ PY
 ```
 
 - CLI는 범용 음성 에셋 생성 도구로 유지합니다. Ren'Py export는 `line_id`, manifest, `approved/` 결과를 이용해 나중에 별도 sync 단계에서 처리합니다.
+
+## 운영 안정성 기준
+
+현재 1차 production hardening은 로컬 제작 도구 기준입니다.
+
+- 생성 전 대사 validation: 빈 대사, 제어 문자, 250자 초과, 미지원 언어 코드 차단.
+- 참조 WAV 존재 여부를 engine 호출 전에 차단.
+- `prompt_text`가 읽힐 대사와 같으면 warning을 반환/표시.
+- `/api/runtime`와 `voice-lab doctor`로 backend/GPT-SoVITS/필수 경로/디스크 여유 공간 점검.
+- CLI와 API 오류는 JSON `detail`로 반환해 에이전트가 파싱 가능하게 유지.
 
 ## 프로젝트 구조
 

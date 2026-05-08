@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import time
+from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,7 @@ from voice_lab.audio import build_clip_path, cut_reference, probe_duration
 from voice_lab.core import normalize_emotion, sanitize_id, validate_reference_duration
 from voice_lab.gptsovits import DEFAULT_API_URL, start_api, wait_for_api
 from voice_lab.ui_config import EMOTION_BUTTONS, LANGUAGE_PRESETS
+from voice_lab.validation import DialogueValidationError, validate_generation_inputs
 from voice_lab.workflow import generate_candidates
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +74,7 @@ class Candidate(BaseModel):
 class GenerateResponse(BaseModel):
     message: str
     candidates: list[Candidate]
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SaveRequest(BaseModel):
@@ -125,13 +128,17 @@ def validate_reference_window(source: Path, start_seconds: float, duration_secon
         raise HTTPException(status_code=400, detail=f"선택한 구간 끝({end:.2f}초)이 파일 길이({source_duration:.2f}초)를 넘어갑니다.")
 
 
-def normalize_generation_request(request: GenerateRequest) -> dict[str, str]:
-    return {
-        "text": request.text.strip(),
-        "text_lang": (request.text_lang or "ko").strip() or "ko",
-        "prompt_text": request.prompt_text.strip(),
-        "prompt_lang": (request.prompt_lang or "auto").strip() or "auto",
-    }
+def normalize_generation_request(request: GenerateRequest) -> dict[str, Any]:
+    try:
+        return validate_generation_inputs(
+            text=request.text,
+            prompt_text=request.prompt_text,
+            text_lang=request.text_lang,
+            prompt_lang=request.prompt_lang,
+            ref_audio_path=Path(request.ref_audio_path),
+        )
+    except DialogueValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def ensure_api(api_url: str, autostart: bool) -> str:
@@ -151,9 +158,34 @@ def ensure_api(api_url: str, autostart: bool) -> str:
     return "GPT-SoVITS API 자동 실행 완료"
 
 
+def runtime_status(api_url: str = DEFAULT_API_URL) -> dict[str, Any]:
+    paths = {
+        "gptsovits_repo": str(DEFAULT_REPO),
+        "gptsovits_python": str(DEFAULT_PYTHON),
+        "refs": str(ROOT / "refs"),
+        "generated": str(ROOT / "generated"),
+        "approved": str(ROOT / "approved"),
+    }
+    path_checks = {name: {"path": path, "exists": Path(path).exists()} for name, path in paths.items()}
+    try:
+        wait_for_api(api_url, timeout_seconds=3)
+        gptsovits = {"ok": True, "url": api_url}
+    except Exception as exc:
+        gptsovits = {"ok": False, "url": api_url, "error": str(exc)}
+    usage = shutil.disk_usage(ROOT)
+    disk = {"root": str(ROOT), "free_bytes": usage.free, "total_bytes": usage.total, "ok": usage.free > 1_000_000_000}
+    ok = bool(gptsovits["ok"] and disk["ok"] and all(item["exists"] for item in path_checks.values()))
+    return {"ok": ok, "backend": {"ok": True}, "gptsovits": gptsovits, "paths": path_checks, "disk": disk}
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/runtime")
+def runtime() -> dict[str, Any]:
+    return runtime_status()
 
 
 @app.get("/api/config")
@@ -214,8 +246,6 @@ def create_reference(
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate(request: GenerateRequest):
     ref_audio = Path(request.ref_audio_path).expanduser()
-    if not ref_audio.exists():
-        raise HTTPException(status_code=404, detail=f"참조 WAV가 없습니다: {ref_audio}")
     normalized = normalize_generation_request(request)
     line_id = request.line_id.strip() or f"line_{int(time.time())}"
     try:
@@ -238,7 +268,7 @@ def generate(request: GenerateRequest):
             Candidate(index=i, seed=item["seed"], wav=item["wav"], ogg=item["ogg"], url=media_url(item["ogg"]))
             for i, item in enumerate(results, start=1)
         ]
-        return GenerateResponse(message=api_status, candidates=candidates)
+        return GenerateResponse(message=api_status, candidates=candidates, warnings=normalized["warnings"])
     except HTTPException:
         raise
     except Exception as exc:

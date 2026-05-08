@@ -20,6 +20,20 @@ def read_json_output(capsys):
     return json.loads(capsys.readouterr().out)
 
 
+def test_cli_doctor_reads_runtime_endpoint(monkeypatch, capsys):
+    def fake_get(url, timeout):
+        assert url == "http://backend/api/runtime"
+        return FakeResponse(payload={"ok": True, "backend": {"ok": True}, "gptsovits": {"ok": True}})
+
+    monkeypatch.setattr(cli.requests, "get", fake_get)
+
+    assert cli.main(["doctor", "--backend", "http://backend"]) == 0
+    data = read_json_output(capsys)
+
+    assert data["ok"] is True
+    assert data["backend"]["ok"] is True
+
+
 def test_cli_status_reports_backend_and_gptsovits(monkeypatch, capsys):
     calls = []
 

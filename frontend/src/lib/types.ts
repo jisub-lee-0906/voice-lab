@@ -9,6 +9,7 @@ export type Candidate = {
 export type GenerateResponse = {
   message: string;
   candidates: Candidate[];
+  warnings?: string[];
 };
 
 export type ReferenceResponse = {

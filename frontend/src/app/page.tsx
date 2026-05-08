@@ -124,7 +124,8 @@ export default function Home() {
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as GenerateResponse;
       setCandidates(data.candidates);
-      setStatus(`${data.message} · ${data.candidates.length}개 음성을 만들었습니다.`);
+      const warningText = data.warnings?.length ? ` 주의: ${data.warnings.join(" / ")}` : "";
+      setStatus(`${data.message} · ${data.candidates.length}개 음성을 만들었습니다.${warningText}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "음성 생성에 실패했습니다.");
     } finally {
