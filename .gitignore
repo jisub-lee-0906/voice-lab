@@ -1,7 +1,19 @@
 .venv/
+.env
+.env.*
+!.env.example
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.pyc
+*.log
+.DS_Store
+Thumbs.db
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 node_modules/
 .next/
 out/
@@ -19,6 +31,13 @@ exports/*
 refs/**/*.wav
 refs/**/*.mp3
 refs/**/*.ogg
+refs/**/*.flac
+refs/**/*.m4a
+refs/**/*.aac
+refs/**/*.webm
+refs/**/*.mp4
+refs/uploads/*
+!refs/.gitkeep
 
 # GPT-SoVITS/models/venvs are local project-owned runtime assets, not git content.
 references/GPT-SoVITS
