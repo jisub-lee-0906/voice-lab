@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from voice_lab import cli
-from voice_lab.analysis import analyze_audio, pick_best_candidate
+from voice_lab.analysis import analyze_audio, char_error_rate, normalize_asr_text, pick_best_candidate
 
 
 def write_tone(path: Path, *, hz: float = 330.0, duration: float = 1.0, amplitude: float = 0.3, sr: int = 16000) -> Path:
@@ -46,6 +46,33 @@ def test_analyze_audio_transcodes_ogg_for_praat_metrics(tmp_path):
 
     assert result.tools["praat_parselmouth"] == "ok"
     assert result.f0_median_hz == pytest.approx(330.0, rel=0.12)
+
+
+def test_text_normalization_and_character_error_rate_ignore_spacing_and_punctuation():
+    assert normalize_asr_text("흥, 네가 오늘부터 내 조수라는 거야?") == "흥네가오늘부터내조수라는거야"
+    assert char_error_rate("흥, 네가 오늘부터 내 조수라는 거야?", "흥 네가 오늘부터 내 주수라는 거야") == pytest.approx(1 / 14)
+
+
+def test_pick_best_candidate_penalizes_bad_asr_match(tmp_path):
+    anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
+    good = write_tone(tmp_path / "bd_intro_001_good.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    bad_text = write_tone(tmp_path / "bd_intro_001_bad_text.wav", hz=330.0, duration=1.0, amplitude=0.25)
+
+    def fake_transcriber(path: Path, language: str) -> str:
+        return "흥 네가 오늘부터 내 조수라는 거야" if path == good else "완전히 다른 이상한 문장"
+
+    result = pick_best_candidate(
+        [bad_text, good],
+        anchor_path=anchor,
+        target_text="흥, 네가 오늘부터 내 조수라는 거야?",
+        transcriber=fake_transcriber,
+    )
+
+    assert result.best.path == str(good)
+    assert result.best.analysis.transcribed_text == "흥 네가 오늘부터 내 조수라는 거야"
+    assert result.ranked[-1].analysis.asr_cer is not None
+    assert result.ranked[-1].analysis.asr_cer > 0.5
+    assert any("ASR CER" in flag for flag in result.ranked[-1].flags)
 
 
 def test_pick_best_candidate_penalizes_low_pitch_collapse_against_anchor(tmp_path):

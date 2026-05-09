@@ -9,7 +9,7 @@ from typing import Any
 import requests
 import yaml
 
-from voice_lab.analysis import collect_audio_files, pick_best_candidate, write_best_pick
+from voice_lab.analysis import collect_audio_files, create_faster_whisper_transcriber, pick_best_candidate, write_best_pick
 
 DEFAULT_BACKEND = "http://127.0.0.1:8100"
 DEFAULT_GPTSOVITS = "http://127.0.0.1:9100"
@@ -198,7 +198,16 @@ def cmd_batch_generate(args: argparse.Namespace) -> int:
 def cmd_pick_best(args: argparse.Namespace) -> int:
     try:
         candidates = collect_audio_files(args.input_dir)
-        result = pick_best_candidate(candidates, anchor_path=args.anchor, target_text=args.target_text)
+        transcriber = None
+        if args.asr_model:
+            transcriber = create_faster_whisper_transcriber(args.asr_model, device=args.asr_device, compute_type=args.asr_compute_type)
+        result = pick_best_candidate(
+            candidates,
+            anchor_path=args.anchor,
+            target_text=args.target_text,
+            transcriber=transcriber,
+            asr_language=args.asr_language,
+        )
         payload = write_best_pick(result, args.output_dir)
         _print_json({"ok": True, "best": payload["best"], "output_dir": str(Path(args.output_dir).expanduser())})
         return 0
@@ -271,6 +280,10 @@ def build_parser() -> argparse.ArgumentParser:
     pick_best.add_argument("--anchor", required=True, help="Known good anchor/reference take")
     pick_best.add_argument("--target-text", default="", help="Target dialogue text for reporting/future ASR checks")
     pick_best.add_argument("--output-dir", required=True, help="Directory for best_selection.json and best/ copy")
+    pick_best.add_argument("--asr-model", default="", help="Optional faster-whisper model name/path for content/CER gate, e.g. tiny or small")
+    pick_best.add_argument("--asr-language", default="ko", help="ASR language code, default: ko")
+    pick_best.add_argument("--asr-device", default="auto", help="faster-whisper device, default: auto")
+    pick_best.add_argument("--asr-compute-type", default="auto", help="faster-whisper compute_type, default: auto")
     pick_best.set_defaults(func=cmd_pick_best)
 
     return parser

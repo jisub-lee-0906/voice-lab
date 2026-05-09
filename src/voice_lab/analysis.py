@@ -5,6 +5,7 @@ import math
 import re
 import shutil
 import subprocess
+import unicodedata
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -33,6 +34,8 @@ class AudioAnalysis:
     hnr_db: float | None
     jitter_local: float | None
     shimmer_local: float | None
+    transcribed_text: str | None
+    asr_cer: float | None
     tools: dict[str, str]
 
 
@@ -50,6 +53,26 @@ class BestPickResult:
     ranked: list[ScoredCandidate]
     anchor: AudioAnalysis | None
     target_text: str
+
+
+def normalize_asr_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    return "".join(ch for ch in normalized if ch.isalnum() or "가" <= ch <= "힣")
+
+
+def char_error_rate(reference: str, hypothesis: str) -> float:
+    ref = normalize_asr_text(reference)
+    hyp = normalize_asr_text(hypothesis)
+    if not ref:
+        return 0.0 if not hyp else 1.0
+    previous = list(range(len(hyp) + 1))
+    for i, ref_ch in enumerate(ref, start=1):
+        current = [i]
+        for j, hyp_ch in enumerate(hyp, start=1):
+            cost = 0 if ref_ch == hyp_ch else 1
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost))
+        previous = current
+    return previous[-1] / len(ref)
 
 
 def _db(value: float) -> float:
@@ -193,7 +216,7 @@ def _praat_metrics(path: Path) -> tuple[dict[str, float | None], str]:
         return {"hnr_db": None, "jitter_local": None, "shimmer_local": None}, f"failed: {exc}"
 
 
-def analyze_audio(path: str | Path) -> AudioAnalysis:
+def analyze_audio(path: str | Path, *, target_text: str = "", transcribed_text: str | None = None) -> AudioAnalysis:
     audio_path = Path(path)
     samples = _decode_audio(audio_path)
     if len(samples) == 0:
@@ -207,6 +230,7 @@ def analyze_audio(path: str | Path) -> AudioAnalysis:
         f0_median = float(praat["praat_f0_median_hz"])
     if praat.get("praat_f0_p10_hz"):
         f0_p10 = float(praat["praat_f0_p10_hz"])
+    asr_cer = char_error_rate(target_text, transcribed_text) if target_text and transcribed_text is not None else None
     return AudioAnalysis(
         path=str(audio_path),
         duration_seconds=float(duration),
@@ -224,6 +248,8 @@ def analyze_audio(path: str | Path) -> AudioAnalysis:
         hnr_db=praat.get("hnr_db"),
         jitter_local=praat.get("jitter_local"),
         shimmer_local=praat.get("shimmer_local"),
+        transcribed_text=transcribed_text,
+        asr_cer=asr_cer,
         tools={"ffmpeg": "ok", "praat_parselmouth": praat_status},
     )
 
@@ -279,20 +305,51 @@ def score_analysis(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None)
     elif analysis.f0_p10_hz is not None and analysis.f0_p10_hz < 170:
         score -= 20
         flags.append("low-tail pitch risk")
+    if analysis.asr_cer is not None:
+        if analysis.asr_cer > 0.45:
+            score -= 45
+            flags.append(f"ASR CER high {analysis.asr_cer:.2f}")
+        elif analysis.asr_cer > 0.25:
+            score -= 22
+            flags.append(f"ASR CER medium {analysis.asr_cer:.2f}")
+        elif analysis.asr_cer > 0.12:
+            score -= 8
+            flags.append(f"ASR CER mild {analysis.asr_cer:.2f}")
     return max(0.0, min(100.0, score)), flags or ["auto gate ok"]
 
 
-def pick_best_candidate(paths: Iterable[str | Path], *, anchor_path: str | Path | None = None, target_text: str = "") -> BestPickResult:
+def pick_best_candidate(
+    paths: Iterable[str | Path],
+    *,
+    anchor_path: str | Path | None = None,
+    target_text: str = "",
+    transcriber: Any | None = None,
+    asr_language: str = "ko",
+) -> BestPickResult:
     anchor = analyze_audio(anchor_path) if anchor_path else None
     ranked: list[ScoredCandidate] = []
     for path in paths:
-        analysis = analyze_audio(path)
+        candidate_path = Path(path)
+        transcript = transcriber(candidate_path, asr_language) if transcriber and target_text else None
+        analysis = analyze_audio(candidate_path, target_text=target_text, transcribed_text=transcript)
         score, flags = score_analysis(analysis, anchor)
         ranked.append(ScoredCandidate(path=analysis.path, score=round(score, 2), flags=flags, analysis=analysis))
     if not ranked:
         raise ValueError("no candidates to rank")
     ranked.sort(key=lambda item: item.score, reverse=True)
     return BestPickResult(best=ranked[0], ranked=ranked, anchor=anchor, target_text=target_text)
+
+
+def create_faster_whisper_transcriber(model_name: str, *, device: str = "auto", compute_type: str = "auto") -> Any:
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+
+    def transcribe(path: Path, language: str) -> str:
+        segments, _info = model.transcribe(str(path), language=language or None, beam_size=1, vad_filter=True)
+        return "".join(segment.text.strip() for segment in segments)
+
+    return transcribe
 
 
 def collect_audio_files(input_dir: str | Path) -> list[Path]:
