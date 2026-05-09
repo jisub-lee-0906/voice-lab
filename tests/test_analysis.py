@@ -114,6 +114,22 @@ def test_feedback_labels_can_penalize_user_rejected_candidates(tmp_path):
     assert any("feedback reject" in flag for flag in result.ranked[-1].flags)
 
 
+def test_collect_audio_files_deduplicates_wav_when_ogg_exists(tmp_path):
+    from voice_lab.analysis import collect_audio_files
+
+    candidates = tmp_path / "candidates"
+    candidates.mkdir()
+    write_tone(candidates / "seed_1.wav", hz=330.0)
+    write_tone(candidates / "seed_2.wav", hz=330.0)
+    ogg = candidates / "seed_1.ogg"
+    import subprocess
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(candidates / "seed_1.wav"), "-c:a", "libvorbis", str(ogg)], check=True)
+
+    files = collect_audio_files(candidates)
+
+    assert [path.name for path in files] == ["seed_1.ogg", "seed_2.wav"]
+
+
 def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):
     anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
     candidates = tmp_path / "candidates"

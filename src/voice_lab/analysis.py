@@ -393,14 +393,16 @@ def create_faster_whisper_transcriber(model_name: str, *, device: str = "auto", 
 
 def collect_audio_files(input_dir: str | Path) -> list[Path]:
     root = Path(input_dir)
-    files = sorted(root.rglob("*.ogg")) + sorted(root.rglob("*.wav"))
-    result: list[Path] = []
-    for path in files:
+    by_stem: dict[Path, Path] = {}
+    for path in sorted(root.rglob("*.wav")) + sorted(root.rglob("*.ogg")):
         lowered = str(path).lower()
         if "hp120_norm" in lowered or "keep_reference" in lowered or "top3" in lowered or "auto_rank" in lowered:
             continue
-        result.append(path)
-    return result
+        key = path.with_suffix("")
+        existing = by_stem.get(key)
+        if existing is None or path.suffix.lower() == ".ogg":
+            by_stem[key] = path
+    return sorted(by_stem.values())
 
 
 def write_best_pick(result: BestPickResult, output_dir: str | Path) -> dict[str, Any]:
