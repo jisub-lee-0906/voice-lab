@@ -1,10 +1,12 @@
 # Next.js shadcn Voice Lab Migration Plan
 
-> **For Hermes:** Implement directly with TDD-style verification at each layer.
+> **Status:** Completed and superseded by the current production layout. The Gradio prototype and top-level `app.py` shim are no longer kept; backend/frontend/CLI are the maintained surfaces.
+
+> **For Hermes:** Historical plan only. Do not reintroduce legacy Gradio files from this document.
 
 **Goal:** Replace the Gradio UI with a product-quality local web app using Next.js, shadcn/ui, TailwindCSS, Motion, and a FastAPI backend while preserving the existing GPT-SoVITS Python workflow.
 
-**Architecture:** Keep Python responsible for ffmpeg/GPT-SoVITS/file-system work. Add `backend/` as a FastAPI API layer over existing `src/voice_lab` modules. Add `frontend/` as a Next.js App Router UI that calls the backend. Preserve the old Gradio app as `legacy_gradio_app.py` for rollback, but stop using it as the main app.
+**Architecture:** Keep Python responsible for ffmpeg/GPT-SoVITS/file-system work. `backend/` is the FastAPI API layer over `src/voice_lab`; `frontend/` is the Next.js App Router UI. Legacy Gradio files have been removed.
 
 **Tech Stack:** Next.js 16, React 19, TypeScript, TailwindCSS 4, shadcn/ui, Motion for React, lucide-react, FastAPI, uvicorn, existing GPT-SoVITS + ffmpeg.
 
@@ -28,11 +30,11 @@ Observed current package versions from npm:
 
 ## Tasks
 
-### Task 1: Preserve Gradio app
+### Task 1: Remove legacy Gradio surface
 
-- Move `app.py` to `legacy_gradio_app.py`.
-- Create a new short `app.py` explaining that the main UI is now `frontend/` + `backend/`.
-- Keep tests adjusted so legacy UI-specific tests do not block the new stack.
+- Remove the old Gradio entrypoint and top-level `app.py` shim.
+- Keep backend/frontend/CLI as the supported public surfaces.
+- Keep tests adjusted so legacy UI-specific tests do not block the maintained stack.
 
 ### Task 2: Add FastAPI backend
 

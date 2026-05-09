@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from voice_lab import cli
-from voice_lab.analysis import AudioAnalysis, analyze_audio, char_error_rate, load_feedback_labels, normalize_asr_text, pick_best_candidate, score_analysis
+from voice_lab.analysis import AudioAnalysis, analyze_audio, char_error_rate, is_quality_pass, load_feedback_labels, normalize_asr_text, pick_best_candidate, score_analysis
 
 
 def write_tone(path: Path, *, hz: float = 330.0, duration: float = 1.0, amplitude: float = 0.3, sr: int = 16000) -> Path:
@@ -55,8 +55,8 @@ def test_text_normalization_and_character_error_rate_ignore_spacing_and_punctuat
 
 def test_pick_best_candidate_penalizes_bad_asr_match(tmp_path):
     anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
-    good = write_tone(tmp_path / "bd_intro_001_good.wav", hz=330.0, duration=1.0, amplitude=0.25)
-    bad_text = write_tone(tmp_path / "bd_intro_001_bad_text.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    good = write_tone(tmp_path / "line_001_good.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    bad_text = write_tone(tmp_path / "line_001_bad_text.wav", hz=330.0, duration=1.0, amplitude=0.25)
 
     def fake_transcriber(path: Path, language: str) -> str:
         return "흥 네가 오늘부터 내 조수라는 거야" if path == good else "완전히 다른 이상한 문장"
@@ -77,8 +77,8 @@ def test_pick_best_candidate_penalizes_bad_asr_match(tmp_path):
 
 def test_pick_best_candidate_penalizes_low_pitch_collapse_against_anchor(tmp_path):
     anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
-    good = write_tone(tmp_path / "bd_intro_001_seed_1.wav", hz=330.0, duration=1.0, amplitude=0.25)
-    low = write_tone(tmp_path / "bd_intro_001_seed_2.wav", hz=140.0, duration=1.0, amplitude=0.25)
+    good = write_tone(tmp_path / "line_001_seed_1.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    low = write_tone(tmp_path / "line_001_seed_2.wav", hz=140.0, duration=1.0, amplitude=0.25)
 
     result = pick_best_candidate([low, good], anchor_path=anchor, target_text="테스트 대사")
 
@@ -91,8 +91,8 @@ def test_feedback_labels_can_penalize_user_rejected_candidates(tmp_path):
     anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
     candidates = tmp_path / "candidates"
     candidates.mkdir()
-    previously_rejected = write_tone(candidates / "bd_intro_002_seed_2026052105.wav", hz=330.0, duration=1.0, amplitude=0.25)
-    alternative = write_tone(candidates / "bd_intro_002_seed_2026052005.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    previously_rejected = write_tone(candidates / "line_002_rejected_seed_2026052105.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    alternative = write_tone(candidates / "line_002_alt_seed_2026052005.wav", hz=330.0, duration=1.0, amplitude=0.25)
     labels_path = tmp_path / "labels.yaml"
     labels_path.write_text(
         "labels:\n"
@@ -184,7 +184,7 @@ def test_strict_quality_gate_rejects_residual_mechanical_texture():
     score, flags = score_analysis(residual_mechanical, anchor, quality_mode="strict")
 
     assert score < 75
-    assert any("STRICT FAIL" in flag for flag in flags)
+    assert not is_quality_pass(flags)
     assert any("mechanical risk" in flag for flag in flags)
 
 
@@ -195,15 +195,21 @@ def test_strict_quality_gate_allows_near_clean_take():
     score, flags = score_analysis(clean, anchor, quality_mode="strict")
 
     assert score >= 90
-    assert not any("STRICT FAIL" in flag for flag in flags)
+    assert is_quality_pass(flags)
+
+
+def test_quality_pass_helper_only_treats_strict_fail_prefix_as_failure():
+    assert is_quality_pass(["STRICT PASS risk 12"])
+    assert is_quality_pass(["feedback note mentions STRICT FAIL historically"])
+    assert not is_quality_pass(["STRICT FAIL mechanical risk 40"])
 
 
 def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):
     anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
     candidates = tmp_path / "candidates"
     candidates.mkdir()
-    write_tone(candidates / "bd_intro_001_seed_1.wav", hz=330.0, duration=1.0, amplitude=0.25)
-    write_tone(candidates / "bd_intro_001_seed_2.wav", hz=140.0, duration=1.0, amplitude=0.25)
+    write_tone(candidates / "line_001_seed_1.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    write_tone(candidates / "line_001_seed_2.wav", hz=140.0, duration=1.0, amplitude=0.25)
     output = tmp_path / "best"
 
     assert cli.main([
@@ -216,8 +222,8 @@ def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):
     data = json.loads(capsys.readouterr().out)
 
     assert data["ok"] is True
-    assert Path(data["best"]["path"]).name == "bd_intro_001_seed_1.wav"
-    assert (output / "best" / "bd_intro_001_seed_1.wav").exists()
+    assert Path(data["best"]["path"]).name == "line_001_seed_1.wav"
+    assert (output / "best" / "line_001_seed_1.wav").exists()
     assert (output / "best_selection.json").exists()
 
 

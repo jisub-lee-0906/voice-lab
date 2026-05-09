@@ -18,6 +18,8 @@ Voice Lab은 서버형 SaaS나 다중 사용자 서비스를 목표로 하지 �
 - 한국어 대사 기본 생성(`text_lang=ko`)
 - `prompt_text` 오용 방지 및 warning 표시
 - 후보 wav/ogg 생성
+- ASR/Praat 기반 `pick-best` 품질 검증
+- strict mechanical gate로 기계음/저음 뭉개짐/불안정 take 탈락
 - 마음에 드는 후보 저장
 - Hermes/스크립트 자동화를 위한 JSON CLI
 - `/api/runtime`와 `voice-lab doctor` 상태 점검
@@ -219,6 +221,28 @@ PY
 
 - CLI는 범용 음성 에셋 생성 도구로 유지합니다. Ren'Py export는 `line_id`, manifest, `approved/` 결과를 이용해 나중에 별도 sync 단계에서 처리합니다.
 
+## 품질 검증 CLI
+
+생성 후보를 바로 채택하지 말고 `pick-best`로 먼저 검증하세요. `balanced`는 탐색용, `strict`는 사용자에게 들려줄 후보를 고를 때 쓰는 보수적인 모드입니다.
+
+```bash
+uv run voice-lab pick-best \
+  --input-dir generated/default/ch01_001 \
+  --anchor /path/to/clean_anchor.ogg \
+  --target-text "안녕하세요. 오늘부터 잘 부탁드립니다." \
+  --output-dir exports/ch01_001_best \
+  --asr-model small \
+  --asr-language ko \
+  --asr-device cpu \
+  --asr-compute-type int8 \
+  --feedback-labels /path/to/voice_gate_feedback.yaml \
+  --quality-mode strict
+```
+
+`best_selection.json`의 `quality_pass`가 `false`면 최종 후보로 쓰지 않습니다. production 자동화에서는 `quality_mode == "strict"`와 `quality_pass == true`를 함께 확인하세요. 그 외에는 후보를 더 생성하거나, 문장을 짧게 바꾸거나, 참조 음성을 바꿔 다시 시도하세요.
+
+자세한 기준은 `docs/quality-gate.md`를 참고하세요.
+
 ## 운영 안정성 기준
 
 현재 1차 production hardening은 로컬 제작 도구 기준입니다.
@@ -284,12 +308,13 @@ averaged_perceptron_tagger_eng not found
 voice-lab/
   backend/                  # FastAPI API 서버
   frontend/                 # Next.js + TailwindCSS UI
-  src/voice_lab/            # 기존 음성 처리 핵심 로직
+  src/voice_lab/            # 음성 처리 핵심 로직
   tests/                    # Python/backend/문구 테스트
-  refs/                     # 참조 음성 위치
-  generated/                # 생성 후보 위치
-  approved/                 # 저장한 최종 음성 위치
-  exports/                  # 외부 프로젝트 export 위치
+  docs/quality-gate.md      # pick-best/strict 품질 검증 기준
+  refs/                     # 참조 음성 위치, 실제 음성 파일은 git 제외
+  generated/                # 생성 후보 위치, 내용물 git 제외
+  approved/                 # 저장한 최종 음성 위치, 내용물 git 제외
+  exports/                  # 외부 프로젝트 export 위치, 내용물 git 제외
   references/GPT-SoVITS/    # 로컬 GPT-SoVITS repo, git 제외
   .venv-gpt-sovits/         # GPT-SoVITS 실행 venv, git 제외
 ```

@@ -15,6 +15,10 @@ import yaml
 
 EPS = 1e-12
 DEFAULT_SR = 16000
+QUALITY_MODES = {"balanced", "strict"}
+STRICT_FAIL_FLAG_PREFIX = "STRICT FAIL"
+STRICT_RISK_FAIL_THRESHOLD = 30.0
+STRICT_SCORE_PASS_THRESHOLD = 88.0
 
 
 @dataclass
@@ -292,7 +296,7 @@ def _semitones(candidate: float | None, anchor: float | None) -> float | None:
     return 12.0 * math.log2(candidate / anchor)
 
 
-def _mechanical_quality_penalty(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None) -> tuple[float, list[str], float]:
+def _strict_mechanical_risk(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None) -> tuple[float, list[str], float]:
     penalty = 0.0
     flags: list[str] = []
     risk = 0.0
@@ -425,17 +429,21 @@ def score_analysis(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None,
         elif analysis.asr_cer > 0.12:
             score -= 8
             flags.append(f"ASR CER mild {analysis.asr_cer:.2f}")
-    if quality_mode not in {"balanced", "strict"}:
+    if quality_mode not in QUALITY_MODES:
         raise ValueError(f"unsupported quality_mode: {quality_mode}")
     if quality_mode == "strict":
-        strict_penalty, strict_flags, strict_risk = _mechanical_quality_penalty(analysis, anchor)
+        strict_penalty, strict_flags, strict_risk = _strict_mechanical_risk(analysis, anchor)
         score -= strict_penalty
         flags.extend(strict_flags)
-        if strict_risk >= 30 or score < 88:
-            flags.append(f"STRICT FAIL mechanical risk {strict_risk:.0f}")
+        if strict_risk >= STRICT_RISK_FAIL_THRESHOLD or score < STRICT_SCORE_PASS_THRESHOLD:
+            flags.append(f"{STRICT_FAIL_FLAG_PREFIX} mechanical risk {strict_risk:.0f}")
         elif strict_risk > 0:
             flags.append(f"STRICT PASS risk {strict_risk:.0f}")
     return max(0.0, min(100.0, score)), flags or ["auto gate ok"]
+
+
+def is_quality_pass(flags: Iterable[str]) -> bool:
+    return not any(flag.strip().startswith(STRICT_FAIL_FLAG_PREFIX) for flag in flags)
 
 
 def pick_best_candidate(
@@ -502,7 +510,7 @@ def write_best_pick(result: BestPickResult, output_dir: str | Path) -> dict[str,
     src = Path(result.best.path)
     best_copy = best_dir / src.name
     shutil.copy2(src, best_copy)
-    quality_pass = not any("STRICT FAIL" in flag for flag in result.best.flags)
+    quality_pass = is_quality_pass(result.best.flags)
     payload = {
         "ok": True,
         "quality_mode": result.quality_mode,
