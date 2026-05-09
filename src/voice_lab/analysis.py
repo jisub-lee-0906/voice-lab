@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
+import yaml
 
 EPS = 1e-12
 DEFAULT_SR = 16000
@@ -53,6 +54,36 @@ class BestPickResult:
     ranked: list[ScoredCandidate]
     anchor: AudioAnalysis | None
     target_text: str
+
+
+def _feedback_key(path: str | Path) -> str:
+    return str(Path(path)).replace("\\", "/")
+
+
+def load_feedback_labels(path: str | Path | None) -> dict[str, dict[str, Any]]:
+    if not path:
+        return {}
+    label_path = Path(path)
+    if not label_path.exists():
+        return {}
+    data = yaml.safe_load(label_path.read_text(encoding="utf-8")) or {}
+    labels: dict[str, dict[str, Any]] = {}
+    for item in data.get("labels", []) or []:
+        raw_path = item.get("path")
+        if not raw_path:
+            continue
+        labels[_feedback_key(raw_path)] = dict(item)
+    return labels
+
+
+def _find_feedback_label(candidate_path: Path, feedback_labels: dict[str, dict[str, Any]] | None) -> dict[str, Any] | None:
+    if not feedback_labels:
+        return None
+    candidate = _feedback_key(candidate_path)
+    for key, item in feedback_labels.items():
+        if candidate == key or candidate.endswith(key) or Path(key).name == candidate_path.name:
+            return item
+    return None
 
 
 def normalize_asr_text(text: str) -> str:
@@ -325,6 +356,7 @@ def pick_best_candidate(
     target_text: str = "",
     transcriber: Any | None = None,
     asr_language: str = "ko",
+    feedback_labels: dict[str, dict[str, Any]] | None = None,
 ) -> BestPickResult:
     anchor = analyze_audio(anchor_path) if anchor_path else None
     ranked: list[ScoredCandidate] = []
@@ -333,6 +365,13 @@ def pick_best_candidate(
         transcript = transcriber(candidate_path, asr_language) if transcriber and target_text else None
         analysis = analyze_audio(candidate_path, target_text=target_text, transcribed_text=transcript)
         score, flags = score_analysis(analysis, anchor)
+        feedback = _find_feedback_label(candidate_path, feedback_labels)
+        if feedback:
+            penalty = float(feedback.get("penalty") or (80 if feedback.get("verdict") == "reject" else 20))
+            score = max(0.0, score - penalty)
+            reasons = ",".join(str(reason) for reason in feedback.get("reasons", []) or [])
+            verdict = str(feedback.get("verdict", "feedback"))
+            flags.append(f"feedback {verdict} -{penalty:.0f}" + (f" ({reasons})" if reasons else ""))
         ranked.append(ScoredCandidate(path=analysis.path, score=round(score, 2), flags=flags, analysis=analysis))
     if not ranked:
         raise ValueError("no candidates to rank")

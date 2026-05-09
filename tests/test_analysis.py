@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from voice_lab import cli
-from voice_lab.analysis import analyze_audio, char_error_rate, normalize_asr_text, pick_best_candidate
+from voice_lab.analysis import analyze_audio, char_error_rate, load_feedback_labels, normalize_asr_text, pick_best_candidate
 
 
 def write_tone(path: Path, *, hz: float = 330.0, duration: float = 1.0, amplitude: float = 0.3, sr: int = 16000) -> Path:
@@ -85,6 +85,33 @@ def test_pick_best_candidate_penalizes_low_pitch_collapse_against_anchor(tmp_pat
     assert result.best.path == str(good)
     assert result.best.score > result.ranked[-1].score
     assert any("low-tail pitch" in flag or "median pitch" in flag for flag in result.ranked[-1].flags)
+
+
+def test_feedback_labels_can_penalize_user_rejected_candidates(tmp_path):
+    anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
+    candidates = tmp_path / "candidates"
+    candidates.mkdir()
+    previously_rejected = write_tone(candidates / "bd_intro_002_seed_2026052105.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    alternative = write_tone(candidates / "bd_intro_002_seed_2026052005.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    labels_path = tmp_path / "labels.yaml"
+    labels_path.write_text(
+        "labels:\n"
+        f"  - path: {previously_rejected}\n"
+        "    verdict: reject\n"
+        "    penalty: 80\n"
+        "    reasons: [mechanical_front]\n",
+        encoding="utf-8",
+    )
+
+    result = pick_best_candidate(
+        [previously_rejected, alternative],
+        anchor_path=anchor,
+        target_text="테스트 대사",
+        feedback_labels=load_feedback_labels(labels_path),
+    )
+
+    assert result.best.path == str(alternative)
+    assert any("feedback reject" in flag for flag in result.ranked[-1].flags)
 
 
 def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):

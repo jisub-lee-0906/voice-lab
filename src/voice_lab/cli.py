@@ -9,7 +9,7 @@ from typing import Any
 import requests
 import yaml
 
-from voice_lab.analysis import collect_audio_files, create_faster_whisper_transcriber, pick_best_candidate, write_best_pick
+from voice_lab.analysis import collect_audio_files, create_faster_whisper_transcriber, load_feedback_labels, pick_best_candidate, write_best_pick
 
 DEFAULT_BACKEND = "http://127.0.0.1:8100"
 DEFAULT_GPTSOVITS = "http://127.0.0.1:9100"
@@ -207,6 +207,7 @@ def cmd_pick_best(args: argparse.Namespace) -> int:
             target_text=args.target_text,
             transcriber=transcriber,
             asr_language=args.asr_language,
+            feedback_labels=load_feedback_labels(args.feedback_labels),
         )
         payload = write_best_pick(result, args.output_dir)
         _print_json({"ok": True, "best": payload["best"], "output_dir": str(Path(args.output_dir).expanduser())})
@@ -284,6 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
     pick_best.add_argument("--asr-language", default="ko", help="ASR language code, default: ko")
     pick_best.add_argument("--asr-device", default="auto", help="faster-whisper device, default: auto")
     pick_best.add_argument("--asr-compute-type", default="auto", help="faster-whisper compute_type, default: auto")
+    pick_best.add_argument("--feedback-labels", default="", help="Optional YAML with human feedback labels/penalties")
     pick_best.set_defaults(func=cmd_pick_best)
 
     return parser
