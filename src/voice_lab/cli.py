@@ -208,6 +208,7 @@ def cmd_pick_best(args: argparse.Namespace) -> int:
             transcriber=transcriber,
             asr_language=args.asr_language,
             feedback_labels=load_feedback_labels(args.feedback_labels),
+            quality_mode=args.quality_mode,
         )
         payload = write_best_pick(result, args.output_dir)
         _print_json({"ok": True, "best": payload["best"], "output_dir": str(Path(args.output_dir).expanduser())})
@@ -286,6 +287,7 @@ def build_parser() -> argparse.ArgumentParser:
     pick_best.add_argument("--asr-device", default="auto", help="faster-whisper device, default: auto")
     pick_best.add_argument("--asr-compute-type", default="auto", help="faster-whisper compute_type, default: auto")
     pick_best.add_argument("--feedback-labels", default="", help="Optional YAML with human feedback labels/penalties")
+    pick_best.add_argument("--quality-mode", choices=["balanced", "strict"], default="balanced", help="balanced keeps best-effort ranking; strict only favors near-clean low-mechanical-risk takes")
     pick_best.set_defaults(func=cmd_pick_best)
 
     return parser

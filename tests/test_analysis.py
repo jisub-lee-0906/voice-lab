@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from voice_lab import cli
-from voice_lab.analysis import analyze_audio, char_error_rate, load_feedback_labels, normalize_asr_text, pick_best_candidate
+from voice_lab.analysis import AudioAnalysis, analyze_audio, char_error_rate, load_feedback_labels, normalize_asr_text, pick_best_candidate, score_analysis
 
 
 def write_tone(path: Path, *, hz: float = 330.0, duration: float = 1.0, amplitude: float = 0.3, sr: int = 16000) -> Path:
@@ -130,6 +130,74 @@ def test_collect_audio_files_deduplicates_wav_when_ogg_exists(tmp_path):
     assert [path.name for path in files] == ["seed_1.ogg", "seed_2.wav"]
 
 
+def make_analysis(
+    *,
+    path: str = "candidate.wav",
+    hnr_db: float | None = 9.0,
+    jitter: float | None = 0.016,
+    shimmer: float | None = 0.10,
+    flatness: float = 0.39,
+    silence: float = 0.34,
+    voiced: float = 0.56,
+    f0: float = 360.0,
+    f0_p10: float = 270.0,
+    low_band: float = 0.004,
+    asr_cer: float | None = 0.02,
+) -> AudioAnalysis:
+    return AudioAnalysis(
+        path=path,
+        duration_seconds=3.0,
+        rms_db=-27.0,
+        peak_db=-7.0,
+        clipping_ratio=0.0,
+        silence_ratio=silence,
+        low_band_ratio=low_band,
+        spectral_flatness=flatness,
+        f0_median_hz=f0,
+        f0_p10_hz=f0_p10,
+        f0_p25_hz=f0_p10 + 15,
+        f0_min_hz=max(80.0, f0_p10 - 40),
+        voiced_ratio=voiced,
+        hnr_db=hnr_db,
+        jitter_local=jitter,
+        shimmer_local=shimmer,
+        transcribed_text="테스트",
+        asr_cer=asr_cer,
+        tools={"ffmpeg": "ok", "praat_parselmouth": "ok"},
+    )
+
+
+def test_strict_quality_gate_rejects_residual_mechanical_texture():
+    anchor = make_analysis(path="anchor.wav", hnr_db=10.0, jitter=0.014, shimmer=0.09, flatness=0.38, silence=0.32, voiced=0.58, f0=380.0, f0_p10=275.0)
+    residual_mechanical = make_analysis(
+        hnr_db=6.8,
+        jitter=0.021,
+        shimmer=0.132,
+        flatness=0.46,
+        silence=0.42,
+        voiced=0.43,
+        f0=330.0,
+        f0_p10=240.0,
+        asr_cer=0.18,
+    )
+
+    score, flags = score_analysis(residual_mechanical, anchor, quality_mode="strict")
+
+    assert score < 75
+    assert any("STRICT FAIL" in flag for flag in flags)
+    assert any("mechanical risk" in flag for flag in flags)
+
+
+def test_strict_quality_gate_allows_near_clean_take():
+    anchor = make_analysis(path="anchor.wav", hnr_db=10.0, jitter=0.014, shimmer=0.09, flatness=0.38, silence=0.32, voiced=0.58, f0=380.0, f0_p10=275.0)
+    clean = make_analysis(hnr_db=9.2, jitter=0.015, shimmer=0.095, flatness=0.39, silence=0.34, voiced=0.57, f0=375.0, f0_p10=272.0, asr_cer=0.02)
+
+    score, flags = score_analysis(clean, anchor, quality_mode="strict")
+
+    assert score >= 90
+    assert not any("STRICT FAIL" in flag for flag in flags)
+
+
 def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):
     anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
     candidates = tmp_path / "candidates"
@@ -151,3 +219,24 @@ def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):
     assert Path(data["best"]["path"]).name == "bd_intro_001_seed_1.wav"
     assert (output / "best" / "bd_intro_001_seed_1.wav").exists()
     assert (output / "best_selection.json").exists()
+
+
+def test_cli_pick_best_strict_reports_quality_fail(tmp_path, capsys):
+    anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
+    candidates = tmp_path / "candidates"
+    candidates.mkdir()
+    write_tone(candidates / "bad.wav", hz=140.0, duration=1.0, amplitude=0.25)
+    output = tmp_path / "best_strict"
+
+    assert cli.main([
+        "pick-best",
+        "--input-dir", str(candidates),
+        "--anchor", str(anchor),
+        "--target-text", "테스트 대사",
+        "--output-dir", str(output),
+        "--quality-mode", "strict",
+    ]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["best"]["quality_pass"] is False
+    assert json.loads((output / "best_selection.json").read_text(encoding="utf-8"))["quality_pass"] is False

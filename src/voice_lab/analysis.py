@@ -54,6 +54,7 @@ class BestPickResult:
     ranked: list[ScoredCandidate]
     anchor: AudioAnalysis | None
     target_text: str
+    quality_mode: str = "balanced"
 
 
 def _feedback_key(path: str | Path) -> str:
@@ -291,7 +292,85 @@ def _semitones(candidate: float | None, anchor: float | None) -> float | None:
     return 12.0 * math.log2(candidate / anchor)
 
 
-def score_analysis(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None) -> tuple[float, list[str]]:
+def _mechanical_quality_penalty(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None) -> tuple[float, list[str], float]:
+    penalty = 0.0
+    flags: list[str] = []
+    risk = 0.0
+
+    def add(points: float, flag: str) -> None:
+        nonlocal penalty, risk
+        penalty += points
+        risk += points
+        flags.append(flag)
+
+    if analysis.hnr_db is None:
+        add(10, "strict missing HNR")
+    elif analysis.hnr_db < 5.5:
+        add(35, f"strict very low HNR {analysis.hnr_db:.1f} dB")
+    elif analysis.hnr_db < 7.5:
+        add(20, f"strict low HNR {analysis.hnr_db:.1f} dB")
+    elif analysis.hnr_db < 8.5:
+        add(8, f"strict borderline HNR {analysis.hnr_db:.1f} dB")
+
+    if analysis.jitter_local is None:
+        add(6, "strict missing jitter")
+    elif analysis.jitter_local > 0.026:
+        add(25, f"strict jitter high {analysis.jitter_local:.3f}")
+    elif analysis.jitter_local > 0.020:
+        add(14, f"strict jitter borderline {analysis.jitter_local:.3f}")
+
+    if analysis.shimmer_local is None:
+        add(6, "strict missing shimmer")
+    elif analysis.shimmer_local > 0.150:
+        add(25, f"strict shimmer high {analysis.shimmer_local:.3f}")
+    elif analysis.shimmer_local > 0.120:
+        add(14, f"strict shimmer borderline {analysis.shimmer_local:.3f}")
+    elif analysis.shimmer_local > 0.110:
+        add(6, f"strict shimmer mild {analysis.shimmer_local:.3f}")
+
+    if analysis.spectral_flatness > 0.50:
+        add(20, f"strict flat/noisy spectrum {analysis.spectral_flatness:.2f}")
+    elif analysis.spectral_flatness > 0.45:
+        add(12, f"strict spectral flatness borderline {analysis.spectral_flatness:.2f}")
+
+    if analysis.silence_ratio > 0.45:
+        add(20, f"strict silence/dropout {analysis.silence_ratio:.2f}")
+    elif analysis.silence_ratio > 0.40:
+        add(10, f"strict silence borderline {analysis.silence_ratio:.2f}")
+
+    if analysis.voiced_ratio < 0.35:
+        add(24, f"strict voiced ratio low {analysis.voiced_ratio:.2f}")
+    elif analysis.voiced_ratio < 0.48:
+        add(12, f"strict voiced ratio borderline {analysis.voiced_ratio:.2f}")
+
+    if anchor:
+        med = _semitones(analysis.f0_median_hz, anchor.f0_median_hz)
+        low = _semitones(analysis.f0_p10_hz, anchor.f0_p10_hz)
+        if med is not None and med < -3.0:
+            add(22, f"strict median pitch collapse {med:.1f} st")
+        elif med is not None and med < -1.5:
+            add(10, f"strict median pitch low {med:.1f} st")
+        if low is not None and low < -4.0:
+            add(24, f"strict low-tail pitch collapse {low:.1f} st")
+        elif low is not None and low < -2.5:
+            add(12, f"strict low-tail pitch low {low:.1f} st")
+        if analysis.spectral_flatness > max(anchor.spectral_flatness * 1.18, 0.43):
+            add(8, "strict flatter than anchor")
+        if analysis.low_band_ratio > max(anchor.low_band_ratio * 1.8, 0.18):
+            add(10, "strict low-band mud vs anchor")
+
+    if analysis.asr_cer is not None:
+        if analysis.asr_cer > 0.25:
+            add(24, f"strict ASR mismatch {analysis.asr_cer:.2f}")
+        elif analysis.asr_cer > 0.12:
+            add(12, f"strict ASR mismatch mild {analysis.asr_cer:.2f}")
+        elif analysis.asr_cer > 0.08:
+            add(5, f"strict ASR near miss {analysis.asr_cer:.2f}")
+
+    return penalty, flags, risk
+
+
+def score_analysis(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None, *, quality_mode: str = "balanced") -> tuple[float, list[str]]:
     score = 100.0
     flags: list[str] = []
     if analysis.duration_seconds < 0.5 or analysis.duration_seconds > 12.0:
@@ -346,6 +425,16 @@ def score_analysis(analysis: AudioAnalysis, anchor: AudioAnalysis | None = None)
         elif analysis.asr_cer > 0.12:
             score -= 8
             flags.append(f"ASR CER mild {analysis.asr_cer:.2f}")
+    if quality_mode not in {"balanced", "strict"}:
+        raise ValueError(f"unsupported quality_mode: {quality_mode}")
+    if quality_mode == "strict":
+        strict_penalty, strict_flags, strict_risk = _mechanical_quality_penalty(analysis, anchor)
+        score -= strict_penalty
+        flags.extend(strict_flags)
+        if strict_risk >= 30 or score < 88:
+            flags.append(f"STRICT FAIL mechanical risk {strict_risk:.0f}")
+        elif strict_risk > 0:
+            flags.append(f"STRICT PASS risk {strict_risk:.0f}")
     return max(0.0, min(100.0, score)), flags or ["auto gate ok"]
 
 
@@ -357,6 +446,7 @@ def pick_best_candidate(
     transcriber: Any | None = None,
     asr_language: str = "ko",
     feedback_labels: dict[str, dict[str, Any]] | None = None,
+    quality_mode: str = "balanced",
 ) -> BestPickResult:
     anchor = analyze_audio(anchor_path) if anchor_path else None
     ranked: list[ScoredCandidate] = []
@@ -364,7 +454,7 @@ def pick_best_candidate(
         candidate_path = Path(path)
         transcript = transcriber(candidate_path, asr_language) if transcriber and target_text else None
         analysis = analyze_audio(candidate_path, target_text=target_text, transcribed_text=transcript)
-        score, flags = score_analysis(analysis, anchor)
+        score, flags = score_analysis(analysis, anchor, quality_mode=quality_mode)
         feedback = _find_feedback_label(candidate_path, feedback_labels)
         if feedback:
             penalty = float(feedback.get("penalty") or (80 if feedback.get("verdict") == "reject" else 20))
@@ -376,7 +466,7 @@ def pick_best_candidate(
     if not ranked:
         raise ValueError("no candidates to rank")
     ranked.sort(key=lambda item: item.score, reverse=True)
-    return BestPickResult(best=ranked[0], ranked=ranked, anchor=anchor, target_text=target_text)
+    return BestPickResult(best=ranked[0], ranked=ranked, anchor=anchor, target_text=target_text, quality_mode=quality_mode)
 
 
 def create_faster_whisper_transcriber(model_name: str, *, device: str = "auto", compute_type: str = "auto") -> Any:
@@ -412,15 +502,18 @@ def write_best_pick(result: BestPickResult, output_dir: str | Path) -> dict[str,
     src = Path(result.best.path)
     best_copy = best_dir / src.name
     shutil.copy2(src, best_copy)
+    quality_pass = not any("STRICT FAIL" in flag for flag in result.best.flags)
     payload = {
         "ok": True,
-        "best": {**asdict(result.best), "copied_path": str(best_copy)},
+        "quality_mode": result.quality_mode,
+        "quality_pass": quality_pass,
+        "best": {**asdict(result.best), "copied_path": str(best_copy), "quality_pass": quality_pass},
         "ranked": [asdict(item) for item in result.ranked],
         "anchor": asdict(result.anchor) if result.anchor else None,
         "target_text": result.target_text,
     }
     (out / "best_selection.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    lines = ["# Voice best candidate selection", "", f"Best: `{src.name}`", "", f"Score: {result.best.score:.1f}", "", "## Ranked", ""]
+    lines = ["# Voice best candidate selection", "", f"Best: `{src.name}`", "", f"Score: {result.best.score:.1f}", f"Quality mode: {result.quality_mode}", f"Quality pass: {quality_pass}", "", "## Ranked", ""]
     lines.append("| rank | score | file | flags |")
     lines.append("|---:|---:|---|---|")
     for rank, item in enumerate(result.ranked, start=1):
