@@ -156,18 +156,18 @@ uv run voice-lab reference \
   --existing-path /mnt/c/Users/Desktop/Downloads/audio.mp3 \
   --start 87 \
   --duration 9.5 \
-  --voice heroine_a \
-  --emotion 기본
+  --voice tsundere \
+  --emotion 츤츤
 ```
 
 새 음성 후보 만들기:
 
 ```bash
 uv run voice-lab generate \
-  --ref /home/jisub-lee/workspace/voice-lab/refs/heroine_a/neutral/audio_ref.wav \
+  --ref /home/jisub-lee/workspace/voice-lab/refs/tsundere/tsun/audio_ref.wav \
   --text "안녕하세요. 오늘부터 잘 부탁드립니다." \
   --line-id ch01_001 \
-  --voice heroine_a \
+  --voice tsundere \
   --candidates 3
 ```
 
@@ -175,8 +175,8 @@ uv run voice-lab generate \
 
 ```bash
 uv run voice-lab save \
-  --source /home/jisub-lee/workspace/voice-lab/generated/heroine_a/ch01_001/seed_1000.ogg \
-  --voice heroine_a \
+  --source /home/jisub-lee/workspace/voice-lab/generated/tsundere/ch01_001/seed_1000.ogg \
+  --voice tsundere \
   --line-id ch01_001
 ```
 
@@ -188,9 +188,9 @@ Ren'Py/VN 대사 배치 생성용 manifest 예시:
     {
       "line_id": "ch01_001",
       "text": "안녕하세요. 오늘부터 잘 부탁드립니다.",
-      "ref_audio_path": "/home/jisub-lee/workspace/voice-lab/refs/heroine_a/neutral/audio_ref.wav",
-      "voice_name": "heroine_a",
-      "emotion": "기본"
+      "ref_audio_path": "/home/jisub-lee/workspace/voice-lab/refs/tsundere/tsun/audio_ref.wav",
+      "voice_name": "tsundere",
+      "emotion": "츤츤"
     }
   ]
 }
@@ -208,6 +208,7 @@ uv run voice-lab batch-generate \
 주의:
 
 - `--text`는 새로 읽힐 대사입니다. 기본 언어는 한국어(`ko`)입니다.
+- 기본 제공 참조가 있다면 `refs/tsundere/tsun/audio_ref.wav`처럼 실제 말투에 맞는 profile/emotion으로 분류하세요. 새 음성도 `refs/<voice_profile>/<emotion>/audio_ref.wav` 구조를 사용하고, 생성/저장 시 `voice_name`을 같은 profile 이름으로 맞춥니다.
 - `--prompt-text`는 참조 음성 안에서 실제로 말한 대사입니다. 모르면 비워두는 편이 낫습니다.
 - 한글 대사에 영어/로마자가 섞인 경우 GPT-SoVITS가 NLTK 영어 태거를 요구할 수 있습니다. `averaged_perceptron_tagger_eng` 오류가 나면 다음을 한 번 실행하세요.
 
@@ -311,6 +312,7 @@ voice-lab/
   src/voice_lab/            # 음성 처리 핵심 로직
   tests/                    # Python/backend/문구 테스트
   docs/quality-gate.md      # pick-best/strict 품질 검증 기준
+  docs/voice-profiles.md    # 참조 음성 profile/emotion 분류 규칙
   refs/                     # 참조 음성 위치, 실제 음성 파일은 git 제외
   generated/                # 생성 후보 위치, 내용물 git 제외
   approved/                 # 저장한 최종 음성 위치, 내용물 git 제외

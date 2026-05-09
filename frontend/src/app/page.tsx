@@ -47,9 +47,9 @@ function parseSeconds(value: string, label: string, min: number, max?: number) {
 }
 
 export default function Home() {
-  const [voiceName, setVoiceName] = useState("default");
+  const [voiceName, setVoiceName] = useState("tsundere");
   const [lineId, setLineId] = useState("line_001");
-  const [emotion, setEmotion] = useState("기본");
+  const [emotion, setEmotion] = useState("츤츤");
   const [file, setFile] = useState<File | null>(null);
   const [existingPath, setExistingPath] = useState("");
   const [startSeconds, setStartSeconds] = useState("0");
@@ -109,7 +109,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ref_audio_path: ref.path,
-          voice_name: voiceName,
+          voice_name: voiceName || "tsundere",
           emotion,
           line_id: lineId,
           text,
@@ -140,7 +140,7 @@ export default function Home() {
       const response = await fetch(`${API_BASE}/api/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_path: candidate.ogg, voice_name: voiceName, line_id: lineId }),
+        body: JSON.stringify({ source_path: candidate.ogg, voice_name: voiceName || "tsundere", line_id: lineId }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as { path: string; message: string };

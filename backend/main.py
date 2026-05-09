@@ -50,8 +50,8 @@ class ReferenceResponse(BaseModel):
 
 class GenerateRequest(BaseModel):
     ref_audio_path: str
-    voice_name: str = "default"
-    emotion: str = "기본"
+    voice_name: str = "tsundere"
+    emotion: str = "츤츤"
     line_id: str = "line_001"
     text: str = Field(min_length=1)
     text_lang: str = "ko"
@@ -79,7 +79,7 @@ class GenerateResponse(BaseModel):
 
 class SaveRequest(BaseModel):
     source_path: str
-    voice_name: str = "default"
+    voice_name: str = "tsundere"
     line_id: str = "line_001"
 
 
@@ -200,8 +200,8 @@ def config() -> dict:
 
 @app.post("/api/reference", response_model=ReferenceResponse)
 def create_reference(
-    voice_name: str = Form("default"),
-    emotion: str = Form("기본"),
+    voice_name: str = Form("tsundere"),
+    emotion: str = Form("츤츤"),
     start_seconds: float = Form(0.0),
     duration_seconds: float = Form(9.5),
     existing_path: str = Form(""),
@@ -252,7 +252,7 @@ def generate(request: GenerateRequest):
         api_status = ensure_api(request.api_url or DEFAULT_API_URL, request.autostart_api)
         results = generate_candidates(
             root=ROOT,
-            character=request.voice_name or "default",
+            character=request.voice_name or "tsundere",
             emotion=request.emotion,
             line_id=line_id,
             text=normalized["text"],
@@ -280,7 +280,7 @@ def save(request: SaveRequest):
     source = Path(request.source_path).expanduser()
     if not source.exists():
         raise HTTPException(status_code=404, detail=f"음성 파일이 없습니다: {source}")
-    dest = ROOT / "approved" / sanitize_id(request.voice_name or "default") / f"{sanitize_id(request.line_id or source.stem)}.ogg"
+    dest = ROOT / "approved" / sanitize_id(request.voice_name or "tsundere") / f"{sanitize_id(request.line_id or source.stem)}.ogg"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, dest)
     return SaveResponse(path=str(dest), url=media_url(dest), message="마음에 드는 음성을 저장했습니다.")
