@@ -9,6 +9,8 @@ from typing import Any
 import requests
 import yaml
 
+from voice_lab.analysis import collect_audio_files, pick_best_candidate, write_best_pick
+
 DEFAULT_BACKEND = "http://127.0.0.1:8100"
 DEFAULT_GPTSOVITS = "http://127.0.0.1:9100"
 
@@ -193,6 +195,18 @@ def cmd_batch_generate(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_pick_best(args: argparse.Namespace) -> int:
+    try:
+        candidates = collect_audio_files(args.input_dir)
+        result = pick_best_candidate(candidates, anchor_path=args.anchor, target_text=args.target_text)
+        payload = write_best_pick(result, args.output_dir)
+        _print_json({"ok": True, "best": payload["best"], "output_dir": str(Path(args.output_dir).expanduser())})
+        return 0
+    except Exception as exc:
+        _print_json({"ok": False, "detail": str(exc)})
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="voice-lab", description="Agent-friendly CLI for the local voice-lab FastAPI service.")
     _add_common_options(parser)
@@ -251,6 +265,13 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--prompt-lang", default="auto", help="Default reference transcript language")
     batch.add_argument("--no-autostart", action="store_true", help="Do not ask backend to autostart GPT-SoVITS")
     batch.set_defaults(func=cmd_batch_generate)
+
+    pick_best = subparsers.add_parser("pick-best", help="Analyze candidates and copy the single best take")
+    pick_best.add_argument("--input-dir", required=True, help="Directory containing candidate .ogg/.wav files")
+    pick_best.add_argument("--anchor", required=True, help="Known good anchor/reference take")
+    pick_best.add_argument("--target-text", default="", help="Target dialogue text for reporting/future ASR checks")
+    pick_best.add_argument("--output-dir", required=True, help="Directory for best_selection.json and best/ copy")
+    pick_best.set_defaults(func=cmd_pick_best)
 
     return parser
 

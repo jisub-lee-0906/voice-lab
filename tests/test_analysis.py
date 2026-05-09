@@ -1,0 +1,83 @@
+import json
+import math
+import wave
+from pathlib import Path
+
+import pytest
+
+from voice_lab import cli
+from voice_lab.analysis import analyze_audio, pick_best_candidate
+
+
+def write_tone(path: Path, *, hz: float = 330.0, duration: float = 1.0, amplitude: float = 0.3, sr: int = 16000) -> Path:
+    frames = bytearray()
+    for i in range(int(sr * duration)):
+        sample = int(max(-1.0, min(1.0, math.sin(2 * math.pi * hz * i / sr) * amplitude)) * 32767)
+        frames.extend(sample.to_bytes(2, byteorder="little", signed=True))
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sr)
+        wav.writeframes(bytes(frames))
+    return path
+
+
+def test_analyze_audio_extracts_pitch_volume_and_professional_tool_status(tmp_path):
+    audio = write_tone(tmp_path / "candidate.wav", hz=330.0, duration=1.0, amplitude=0.25)
+
+    result = analyze_audio(audio)
+
+    assert result.path == str(audio)
+    assert result.duration_seconds == pytest.approx(1.0, abs=0.05)
+    assert -18 <= result.rms_db <= -12
+    assert result.f0_median_hz == pytest.approx(330.0, rel=0.12)
+    assert "praat_parselmouth" in result.tools
+    assert result.tools["praat_parselmouth"] == "ok"
+    assert "ffmpeg" in result.tools
+
+
+def test_analyze_audio_transcodes_ogg_for_praat_metrics(tmp_path):
+    wav = write_tone(tmp_path / "candidate.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    ogg = tmp_path / "candidate.ogg"
+    import subprocess
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(wav), "-c:a", "libvorbis", str(ogg)], check=True)
+
+    result = analyze_audio(ogg)
+
+    assert result.tools["praat_parselmouth"] == "ok"
+    assert result.f0_median_hz == pytest.approx(330.0, rel=0.12)
+
+
+def test_pick_best_candidate_penalizes_low_pitch_collapse_against_anchor(tmp_path):
+    anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
+    good = write_tone(tmp_path / "bd_intro_001_seed_1.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    low = write_tone(tmp_path / "bd_intro_001_seed_2.wav", hz=140.0, duration=1.0, amplitude=0.25)
+
+    result = pick_best_candidate([low, good], anchor_path=anchor, target_text="테스트 대사")
+
+    assert result.best.path == str(good)
+    assert result.best.score > result.ranked[-1].score
+    assert any("low-tail pitch" in flag or "median pitch" in flag for flag in result.ranked[-1].flags)
+
+
+def test_cli_pick_best_writes_json_and_best_copy(tmp_path, capsys):
+    anchor = write_tone(tmp_path / "anchor.wav", hz=340.0, duration=1.0, amplitude=0.25)
+    candidates = tmp_path / "candidates"
+    candidates.mkdir()
+    write_tone(candidates / "bd_intro_001_seed_1.wav", hz=330.0, duration=1.0, amplitude=0.25)
+    write_tone(candidates / "bd_intro_001_seed_2.wav", hz=140.0, duration=1.0, amplitude=0.25)
+    output = tmp_path / "best"
+
+    assert cli.main([
+        "pick-best",
+        "--input-dir", str(candidates),
+        "--anchor", str(anchor),
+        "--target-text", "테스트 대사",
+        "--output-dir", str(output),
+    ]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["ok"] is True
+    assert Path(data["best"]["path"]).name == "bd_intro_001_seed_1.wav"
+    assert (output / "best" / "bd_intro_001_seed_1.wav").exists()
+    assert (output / "best_selection.json").exists()
