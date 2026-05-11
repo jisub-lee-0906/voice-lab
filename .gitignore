@@ -39,6 +39,12 @@ refs/**/*.mp4
 refs/uploads/*
 !refs/.gitkeep
 
+# Local voice DB source/reference audio. Keep docs/manifests/placeholders only.
+voice_db/original/*
+!voice_db/original/.gitkeep
+voice_db/staging/*
+!voice_db/staging/.gitkeep
+
 # GPT-SoVITS/models/venvs are local project-owned runtime assets, not git content.
 references/GPT-SoVITS
 .venv-gpt-sovits
