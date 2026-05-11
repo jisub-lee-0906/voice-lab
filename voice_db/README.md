@@ -48,23 +48,31 @@ female,teen,tsundere,female_teen_tsundere.mp3
 
 1. 사용자가 원본 샘플을 `voice_db/original/`에 넣습니다.
 2. 파일명은 CSV의 `파일명`과 맞춥니다.
-3. voice-lab에서 3~10초 구간을 잘라 `refs/voice_db/<voice_id>/base/audio_ref.wav`로 만듭니다.
-4. 생성할 때 `voice_name`은 `<voice_id>`를 사용하고, emotion은 기본값 `base` 또는 UI에서 고른 원하는 느낌을 사용합니다.
+3. 캐릭터마다 사용할 기본 보이스 프로필을 하나 고릅니다.
+4. voice-lab에서 그 프로필의 3~10초 구간을 잘라 `refs/voice_db/<voice_id>/base/audio_ref.wav`로 만듭니다.
+5. 생성할 때 `voice_name`은 `<voice_id>`를 사용하고, 감정/연기톤은 GPT-SoVITS 생성 단계에서 조절합니다.
 
-## 아리아 후보 우선순위
+## 캐릭터 매핑 방식
 
-처음에는 아래 6개만 먼저 넣고 들어보는 것을 추천합니다.
+이 DB는 “한 캐릭터에 여러 후보를 계속 붙이는” 구조가 아니라, 캐릭터의 기본 목소리를 하나의 `voice_id`로 고정하기 위한 목록입니다.
+
+예시:
 
 ```text
-female_teen_tsundere.mp3
-female_teen_cool.mp3
-female_teen_elegant.mp3
-female_young_tsundere.mp3
-female_young_cool.mp3
-female_young_elegant.mp3
+아리아 -> female_teen_tsundere
+학원장 -> male_elder_mage
+학생 A -> female_teen_pure
+빌런 -> male_adult_villain
 ```
 
-아리아는 “학생회장 + 경계심 + 귀족적/차가운 톤”이므로 `cool`, `elegant`, `tsundere` 계열이 우선입니다.
+아리아용으로는 우선 아래 파일 하나만 넣으면 됩니다.
+
+```text
+voice_db/original/female_teen_tsundere.mp3
+refs/voice_db/female_teen_tsundere/base/audio_ref.wav
+```
+
+이후 아리아의 차가운 말투, 당황, 부드러움 같은 변화는 `female_teen_tsundere` 참조를 유지한 채 GPT-SoVITS의 생성 대사/파라미터/seed/후보 선택으로 조절합니다.
 
 ## git 정책
 

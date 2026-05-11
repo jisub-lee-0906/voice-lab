@@ -15,6 +15,9 @@ def test_voice_db_layout_exists_and_documents_korean_only_manifest():
     assert "한국어 전용" in readme
     assert "성별,연령,유형,파일명" in readme
     assert "refs/voice_db/<voice_id>/base/audio_ref.wav" in readme
+    assert "아리아 -> female_teen_tsundere" in readme
+    assert "아리아용으로는 우선 아래 파일 하나만" in readme
+    assert "female_teen_cool.mp3\nfemale_teen_elegant.mp3" not in readme
 
 
 def test_voice_db_sample_csv_is_utf8_and_matches_filename_rule():
