@@ -86,14 +86,14 @@ Next.js -> http://127.0.0.1:8100/api/...
 터미널 1: backend
 
 ```bash
-cd /home/jisub-lee/workspace/voice-lab
+cd E:\workspace\voice-lab
 uv run python -m uvicorn backend.main:app --host 127.0.0.1 --port 8100
 ```
 
 터미널 2: frontend
 
 ```bash
-cd /home/jisub-lee/workspace/voice-lab/frontend
+cd E:\workspace\voice-lab/frontend
 npm run dev
 ```
 
@@ -112,7 +112,7 @@ http://127.0.0.1:8100/api/health
 운영 상태 점검:
 
 ```bash
-cd /home/jisub-lee/workspace/voice-lab
+cd E:\workspace\voice-lab
 uv run voice-lab doctor
 ```
 
@@ -143,7 +143,7 @@ GPT-SoVITS가 별도로 꺼져 있으면 backend의 `autostart_api` 흐름이 �
 상태 확인:
 
 ```bash
-cd /home/jisub-lee/workspace/voice-lab
+cd E:\workspace\voice-lab
 uv run voice-lab status
 uv run voice-lab doctor
 ```
@@ -154,7 +154,7 @@ uv run voice-lab doctor
 
 ```bash
 uv run voice-lab reference \
-  --existing-path /mnt/c/Users/Desktop/Downloads/audio.mp3 \
+  --existing-path C:\Users\Desktop\Downloads\audio.mp3 \
   --start 87 \
   --duration 9.5 \
   --voice tsundere \
@@ -165,7 +165,7 @@ uv run voice-lab reference \
 
 ```bash
 uv run voice-lab generate \
-  --ref /home/jisub-lee/workspace/voice-lab/refs/tsundere/tsun/audio_ref.wav \
+  --ref E:\workspace\voice-lab/refs/tsundere/tsun/audio_ref.wav \
   --text "안녕하세요. 오늘부터 잘 부탁드립니다." \
   --line-id ch01_001 \
   --voice tsundere \
@@ -176,7 +176,7 @@ uv run voice-lab generate \
 
 ```bash
 uv run voice-lab save \
-  --source /home/jisub-lee/workspace/voice-lab/generated/tsundere/ch01_001/seed_1000.ogg \
+  --source E:\workspace\voice-lab/generated/tsundere/ch01_001/seed_1000.ogg \
   --voice tsundere \
   --line-id ch01_001
 ```
@@ -189,7 +189,7 @@ Ren'Py/VN 대사 배치 생성용 manifest 예시:
     {
       "line_id": "ch01_001",
       "text": "안녕하세요. 오늘부터 잘 부탁드립니다.",
-      "ref_audio_path": "/home/jisub-lee/workspace/voice-lab/refs/tsundere/tsun/audio_ref.wav",
+      "ref_audio_path": "E:\workspace\voice-lab/refs/tsundere/tsun/audio_ref.wav",
       "voice_name": "tsundere",
       "emotion": "츤츤"
     }
@@ -214,7 +214,7 @@ uv run voice-lab batch-generate \
 - 한글 대사에 영어/로마자가 섞인 경우 GPT-SoVITS가 NLTK 영어 태거를 요구할 수 있습니다. `averaged_perceptron_tagger_eng` 오류가 나면 다음을 한 번 실행하세요.
 
 ```bash
-/home/jisub-lee/workspace/voice-lab/.venv-gpt-sovits/bin/python - <<'PY'
+E:\workspace\voice-lab/.venv-gpt-sovits/bin/python - <<'PY'
 import nltk
 nltk.download('averaged_perceptron_tagger_eng')
 nltk.download('averaged_perceptron_tagger')
@@ -327,14 +327,14 @@ voice-lab/
 Python/backend:
 
 ```bash
-cd /home/jisub-lee/workspace/voice-lab
+cd E:\workspace\voice-lab
 uv run --extra dev pytest -q
 ```
 
 Frontend:
 
 ```bash
-cd /home/jisub-lee/workspace/voice-lab/frontend
+cd E:\workspace\voice-lab/frontend
 npm run lint
 npm run build
 ```
