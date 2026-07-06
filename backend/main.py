@@ -158,6 +158,13 @@ def ensure_api(api_url: str, autostart: bool) -> str:
     return "GPT-SoVITS API 자동 실행 완료"
 
 
+def _safe_path_exists(path: str | Path) -> bool:
+    try:
+        return Path(path).exists()
+    except OSError:
+        return False
+
+
 def runtime_status(api_url: str = DEFAULT_API_URL) -> dict[str, Any]:
     paths = {
         "gptsovits_repo": str(DEFAULT_REPO),
@@ -166,7 +173,7 @@ def runtime_status(api_url: str = DEFAULT_API_URL) -> dict[str, Any]:
         "generated": str(ROOT / "generated"),
         "approved": str(ROOT / "approved"),
     }
-    path_checks = {name: {"path": path, "exists": Path(path).exists()} for name, path in paths.items()}
+    path_checks = {name: {"path": path, "exists": _safe_path_exists(path)} for name, path in paths.items()}
     try:
         wait_for_api(api_url, timeout_seconds=3)
         gptsovits = {"ok": True, "url": api_url}

@@ -31,7 +31,7 @@ def build_tts_payload(
     return {
         "text": text,
         "text_lang": text_lang,
-        "ref_audio_path": str(Path(ref_audio_path)),
+        "ref_audio_path": Path(ref_audio_path).as_posix(),
         "prompt_text": prompt_text,
         "prompt_lang": prompt_lang,
         "text_split_method": text_split_method,

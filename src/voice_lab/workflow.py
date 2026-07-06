@@ -35,11 +35,11 @@ def render_metadata(request: VoiceRequest, output_wav: Path, output_ogg: Path) -
         "prompt_text": request.prompt_text,
         "prompt_lang": request.prompt_lang,
         "seed": int(request.seed),
-        "source_audio": str(request.source_audio),
-        "ref_audio": str(request.ref_audio),
+        "source_audio": request.source_audio.as_posix(),
+        "ref_audio": request.ref_audio.as_posix(),
         "outputs": {
-            "wav": str(output_wav),
-            "ogg": str(output_ogg),
+            "wav": output_wav.as_posix(),
+            "ogg": output_ogg.as_posix(),
         },
     }
 
