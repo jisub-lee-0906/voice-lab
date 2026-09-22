@@ -25,6 +25,8 @@ Voice Lab은 서버형 SaaS나 다중 사용자 서비스를 목표로 하지 �
 - Hermes/스크립트 자동화를 위한 JSON CLI
 - `/api/runtime`와 `voice-lab doctor` 상태 점검
 
+검증 범위: 현재 자동화 테스트와 frontend production build는 코드 경로를 확인할 뿐입니다. 실제 GPT-SoVITS 모델 생성, GPU/CUDA/ffmpeg 호환성, 외부 API, 다중 사용자 서비스 E2E는 이 readiness 작업에서 실행하지 않았습니다.
+
 아직 목표가 아닌 것:
 
 - 공개 서비스/SaaS 운영
@@ -357,3 +359,7 @@ GitHub에 올릴 때는 private repository가 기본입니다.
 - `approved/`
 - `exports/`
 - 실제 참조 음성 파일
+
+## 자동 검증 현황 (2026-09-23)
+
+GitHub Actions 워크플로와 실행 기록은 없습니다. 위 로컬 테스트·빌드 기록을 원격 CI 통과로 해석하지 마세요.
