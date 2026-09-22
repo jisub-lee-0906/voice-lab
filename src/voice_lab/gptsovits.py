@@ -50,8 +50,10 @@ def wait_for_api(api_url: str = DEFAULT_API_URL, timeout_seconds: float = 90.0) 
     last_error = None
     while time.time() < deadline:
         try:
-            response = requests.get(f"{api_url.rstrip('/')}/docs", timeout=2)
-            if response.ok:
+            response = requests.get(f"{api_url.rstrip('/')}/docs", timeout=2, allow_redirects=False)
+            if 300 <= response.status_code < 400:
+                last_error = RuntimeError(f"GPT-SoVITS API redirect is not allowed (HTTP {response.status_code})")
+            elif response.ok:
                 return
         except requests.RequestException as exc:
             last_error = exc
@@ -81,7 +83,9 @@ def start_api(repo_dir: Path, python_bin: Path, host: str = "127.0.0.1", port: i
 
 def synthesize_to_wav(payload: dict[str, Any], output_wav: Path, api_url: str = DEFAULT_API_URL) -> Path:
     output_wav.parent.mkdir(parents=True, exist_ok=True)
-    response = requests.post(f"{api_url.rstrip('/')}/tts", json=payload, timeout=300)
+    response = requests.post(f"{api_url.rstrip('/')}/tts", json=payload, timeout=300, allow_redirects=False)
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(f"GPT-SoVITS API redirect is not allowed (HTTP {response.status_code})")
     if not response.ok:
         raise RuntimeError(f"GPT-SoVITS request failed HTTP {response.status_code}: {response.text[:500]}")
     output_wav.write_bytes(response.content)

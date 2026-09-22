@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import math
 import re
 
 
@@ -48,8 +49,9 @@ def sanitize_id(value: str) -> str:
 
 
 def validate_reference_duration(duration_seconds: float) -> None:
-    if not 3.0 <= float(duration_seconds) <= 10.0:
-        raise ValueError("GPT-SoVITS reference audio must be in the 3-10 second range")
+    duration = float(duration_seconds)
+    if not math.isfinite(duration) or not 3.0 <= duration <= 10.0:
+        raise ValueError("GPT-SoVITS reference audio must be a finite value in the 3-10 second range")
 
 
 def build_take_paths(root: Path, character: str, line_id: str, seed: int) -> TakePaths:

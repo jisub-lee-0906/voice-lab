@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
+import os
 import shutil
 import time
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -21,10 +24,91 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPO = ROOT / "references" / "GPT-SoVITS"
 DEFAULT_PYTHON = ROOT / ".venv-gpt-sovits" / "bin" / "python"
 UPLOADS_DIR = ROOT / "refs" / "uploads"
-MEDIA_DIRS = [ROOT / "refs", ROOT / "generated", ROOT / "approved", ROOT / "exports"]
+GENERATED_DIR = ROOT / "generated"
+MEDIA_DIRS = [ROOT / "refs", GENERATED_DIR, ROOT / "approved", ROOT / "exports"]
+MAX_UPLOAD_BYTES = int(os.environ.get("VOICE_LAB_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 API_PROCESS = None
 
+
+def allowed_api_urls() -> set[str]:
+    """Return server-configured GPT-SoVITS endpoints, normalized without a trailing slash."""
+    configured = os.environ.get("VOICE_LAB_ALLOWED_API_URLS", "")
+    return {DEFAULT_API_URL.rstrip("/"), *(url.strip().rstrip("/") for url in configured.split(",") if url.strip())}
+
+
+def resolve_api_url(value: str) -> str:
+    api_url = (value or DEFAULT_API_URL).strip().rstrip("/")
+    if api_url not in allowed_api_urls():
+        raise HTTPException(
+            status_code=400,
+            detail="허용되지 않은 GPT-SoVITS API 주소입니다. 외부 주소는 VOICE_LAB_ALLOWED_API_URLS 서버 환경설정에 명시하세요.",
+        )
+    return api_url
+
+
+def upload_limit_detail() -> str:
+    return f"참조 요청 본문은 multipart 형식 오버헤드를 포함해 {MAX_UPLOAD_BYTES}바이트를 넘을 수 없습니다."
+
+
+def save_upload_with_limit(upload: UploadFile, destination: Path) -> Path:
+    written = 0
+    try:
+        with destination.open("wb") as out:
+            while chunk := upload.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail=upload_limit_detail())
+                out.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return destination
+
+
+class ReferenceBodyLimitMiddleware:
+    """Reject an oversized reference request before multipart parsing can spool it to disk."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] != "/api/reference":
+            await self.app(scope, receive, send)
+            return
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        try:
+            content_length = int(headers.get(b"content-length", b"0"))
+        except ValueError:
+            content_length = 0
+        if content_length > MAX_UPLOAD_BYTES:
+            await JSONResponse(status_code=413, content={"detail": upload_limit_detail()})(scope, receive, send)
+            return
+
+        messages = []
+        received = 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                messages.append(message)
+                break
+            received += len(message.get("body", b""))
+            if received > MAX_UPLOAD_BYTES:
+                await JSONResponse(status_code=413, content={"detail": upload_limit_detail()})(scope, receive, send)
+                return
+            messages.append(message)
+            if not message.get("more_body", False):
+                break
+
+        async def replay_receive():
+            if messages:
+                return messages.pop(0)
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, replay_receive, send)
+
+
 app = FastAPI(title="Voice Lab API")
+app.add_middleware(ReferenceBodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:3100", "http://localhost:3100"],
@@ -111,8 +195,8 @@ def validate_reference_window(source: Path, start_seconds: float, duration_secon
         duration = float(duration_seconds)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="시작 초와 길이 초는 숫자로 입력하세요.") from exc
-    if start < 0:
-        raise HTTPException(status_code=400, detail="시작 초는 0 이상이어야 합니다.")
+    if not math.isfinite(start) or start < 0:
+        raise HTTPException(status_code=400, detail="시작 초는 유한한 0 이상의 숫자여야 합니다.")
     try:
         validate_reference_duration(duration)
     except ValueError as exc:
@@ -213,8 +297,7 @@ def create_reference(
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
         filename = sanitize_id(Path(upload_filename).stem) + Path(upload_filename).suffix.lower()
         source = UPLOADS_DIR / f"{int(time.time())}_{filename}"
-        with source.open("wb") as out:
-            shutil.copyfileobj(audio_file.file, out)
+        save_upload_with_limit(audio_file, source)
     elif existing_path.strip():
         source = Path(existing_path.strip()).expanduser()
     else:
@@ -247,9 +330,10 @@ def create_reference(
 def generate(request: GenerateRequest):
     ref_audio = Path(request.ref_audio_path).expanduser()
     normalized = normalize_generation_request(request)
+    api_url = resolve_api_url(request.api_url)
     line_id = request.line_id.strip() or f"line_{int(time.time())}"
     try:
-        api_status = ensure_api(request.api_url or DEFAULT_API_URL, request.autostart_api)
+        api_status = ensure_api(api_url, request.autostart_api)
         results = generate_candidates(
             root=ROOT,
             character=request.voice_name or "tsundere",
@@ -262,7 +346,7 @@ def generate(request: GenerateRequest):
             prompt_lang=normalized["prompt_lang"],
             base_seed=request.base_seed,
             count=request.candidate_count,
-            api_url=request.api_url or DEFAULT_API_URL,
+            api_url=api_url,
         )
         candidates = [
             Candidate(index=i, seed=item["seed"], wav=item["wav"], ogg=item["ogg"], url=media_url(item["ogg"]))
@@ -277,9 +361,19 @@ def generate(request: GenerateRequest):
 
 @app.post("/api/save", response_model=SaveResponse)
 def save(request: SaveRequest):
-    source = Path(request.source_path).expanduser()
-    if not source.exists():
-        raise HTTPException(status_code=404, detail=f"음성 파일이 없습니다: {source}")
+    source = Path(request.source_path).expanduser().resolve()
+    try:
+        source.relative_to(GENERATED_DIR.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="생성 폴더의 음성 후보만 저장할 수 있습니다.") from exc
+    if not source.is_file() or source.suffix.lower() != ".ogg":
+        raise HTTPException(status_code=400, detail="저장할 생성 후보 OGG 파일을 찾을 수 없습니다.")
+    try:
+        duration = probe_duration(source)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="저장할 생성 후보가 유효한 오디오 파일이 아닙니다.") from exc
+    if not math.isfinite(duration) or duration <= 0:
+        raise HTTPException(status_code=400, detail="저장할 생성 후보가 유효한 오디오 파일이 아닙니다.")
     dest = ROOT / "approved" / sanitize_id(request.voice_name or "tsundere") / f"{sanitize_id(request.line_id or source.stem)}.ogg"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, dest)

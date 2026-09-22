@@ -38,3 +38,13 @@ def test_build_take_paths_places_outputs_under_generated_character_line_id():
     paths = build_take_paths(root, "Seria", "CH01 S01 001", 1234)
     assert paths.wav == root / "generated" / "seria" / "ch01_s01_001" / "seed_1234.wav"
     assert paths.ogg == root / "generated" / "seria" / "ch01_s01_001" / "seed_1234.ogg"
+
+
+def test_validate_reference_duration_rejects_non_finite_values():
+    for duration in (float("nan"), float("inf"), float("-inf")):
+        try:
+            validate_reference_duration(duration)
+        except ValueError as exc:
+            assert "finite" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")

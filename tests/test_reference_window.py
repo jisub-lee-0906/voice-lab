@@ -4,11 +4,12 @@ import pytest
 import backend.main as backend
 
 
-def test_validate_reference_window_rejects_negative_start(tmp_path):
+@pytest.mark.parametrize("start", [-1, float("nan"), float("inf")])
+def test_validate_reference_window_rejects_invalid_start(tmp_path, start):
     source = tmp_path / "source.wav"
     source.write_bytes(b"fake")
     with pytest.raises(HTTPException) as exc:
-        backend.validate_reference_window(source, -1, 9.5)
+        backend.validate_reference_window(source, start, 9.5)
     assert exc.value.status_code == 400
     assert "시작 초" in exc.value.detail
 
