@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 import math
 import os
 import shutil
+import secrets
 import time
 from typing import Any
 
@@ -27,6 +29,8 @@ UPLOADS_DIR = ROOT / "refs" / "uploads"
 GENERATED_DIR = ROOT / "generated"
 MEDIA_DIRS = [ROOT / "refs", GENERATED_DIR, ROOT / "approved", ROOT / "exports"]
 MAX_UPLOAD_BYTES = int(os.environ.get("VOICE_LAB_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
+LOCAL_FRONTEND_ORIGINS = {"http://127.0.0.1:3100", "http://localhost:3100"}
 API_PROCESS = None
 
 
@@ -63,6 +67,49 @@ def save_upload_with_limit(upload: UploadFile, destination: Path) -> Path:
         destination.unlink(missing_ok=True)
         raise
     return destination
+
+
+def _host_name(headers: dict[bytes, bytes]) -> str:
+    raw = headers.get(b"host", b"").decode("latin-1").strip().lower()
+    if raw.startswith("["):
+        return raw.split("]", 1)[0] + "]"
+    return raw.rsplit(":", 1)[0] if ":" in raw else raw
+
+
+def _bearer_token(headers: dict[bytes, bytes]) -> str:
+    value = headers.get(b"authorization", b"").decode("latin-1")
+    scheme, _, token = value.partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
+
+
+class LocalAccessBoundaryMiddleware:
+    """Keep local mode local; external API access requires an operator-set token."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        host = _host_name(headers)
+        is_local_host = host in LOCAL_HOSTS and _is_loopback_client(scope)
+        origin = headers.get(b"origin", b"").decode("latin-1").rstrip("/")
+        if is_local_host:
+            if origin and origin not in LOCAL_FRONTEND_ORIGINS:
+                await JSONResponse(status_code=403, content={"detail": "허용되지 않은 요청 출처입니다."})(scope, receive, send)
+                return
+        else:
+            if scope.get("path", "").startswith("/media/"):
+                await JSONResponse(status_code=403, content={"detail": "미디어는 로컬 호스트에서만 제공됩니다."})(scope, receive, send)
+                return
+            expected = os.environ.get("VOICE_LAB_API_TOKEN", "").strip()
+            supplied = _bearer_token(headers)
+            if not expected or not supplied or not secrets.compare_digest(supplied, expected):
+                await JSONResponse(status_code=403, content={"detail": "외부 접근에는 서버 API 토큰이 필요합니다."})(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class ReferenceBodyLimitMiddleware:
@@ -109,6 +156,7 @@ class ReferenceBodyLimitMiddleware:
 
 app = FastAPI(title="Voice Lab API")
 app.add_middleware(ReferenceBodyLimitMiddleware)
+app.add_middleware(LocalAccessBoundaryMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:3100", "http://localhost:3100"],
@@ -187,6 +235,17 @@ def media_url(path: str | Path) -> str:
         except ValueError:
             continue
     return str(path)
+
+
+def resolve_allowed_reference_path(value: str | Path) -> Path:
+    resolved = Path(value).expanduser().resolve()
+    for root in ((ROOT / "refs").resolve(), (ROOT / "voice_db").resolve()):
+        try:
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+    raise HTTPException(status_code=400, detail="참조 음성은 refs 또는 voice_db 폴더 안에 있어야 합니다.")
 
 
 def validate_reference_window(source: Path, start_seconds: float, duration_seconds: float) -> None:
@@ -299,7 +358,7 @@ def create_reference(
         source = UPLOADS_DIR / f"{int(time.time())}_{filename}"
         save_upload_with_limit(audio_file, source)
     elif existing_path.strip():
-        source = Path(existing_path.strip()).expanduser()
+        source = resolve_allowed_reference_path(existing_path.strip())
     else:
         raise HTTPException(status_code=400, detail="음성 파일을 업로드하거나 기존 파일 경로를 입력하세요.")
     if not source.exists():
@@ -328,9 +387,9 @@ def create_reference(
 
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate(request: GenerateRequest):
-    ref_audio = Path(request.ref_audio_path).expanduser()
-    normalized = normalize_generation_request(request)
     api_url = resolve_api_url(request.api_url)
+    normalized = normalize_generation_request(request)
+    ref_audio = resolve_allowed_reference_path(request.ref_audio_path)
     line_id = request.line_id.strip() or f"line_{int(time.time())}"
     try:
         api_status = ensure_api(api_url, request.autostart_api)
@@ -378,3 +437,12 @@ def save(request: SaveRequest):
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, dest)
     return SaveResponse(path=str(dest), url=media_url(dest), message="마음에 드는 음성을 저장했습니다.")
+
+def _is_loopback_client(scope) -> bool:
+    client = scope.get("client")
+    if not client or not client[0]:
+        return False
+    try:
+        return ipaddress.ip_address(str(client[0]).split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False

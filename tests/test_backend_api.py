@@ -4,14 +4,14 @@ from backend.main import app
 
 
 def test_health_returns_ok():
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
 def test_config_exposes_beginner_friendly_defaults():
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
     response = client.get("/api/config")
     assert response.status_code == 200
     data = response.json()

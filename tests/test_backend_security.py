@@ -72,7 +72,7 @@ def test_server_config_can_opt_in_additional_api_url(monkeypatch):
 
 def test_reference_body_limit_rejects_declared_oversize(monkeypatch):
     monkeypatch.setattr(backend, "MAX_UPLOAD_BYTES", 4)
-    client = TestClient(backend.app)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
 
     response = client.post("/api/reference", headers={"content-length": "5"})
 
@@ -81,7 +81,7 @@ def test_reference_body_limit_rejects_declared_oversize(monkeypatch):
 
 def test_reference_body_limit_rejects_chunked_body_without_content_length(monkeypatch):
     monkeypatch.setattr(backend, "MAX_UPLOAD_BYTES", 4)
-    client = TestClient(backend.app)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
 
     def chunks():
         yield b"12"
@@ -102,3 +102,97 @@ def test_streaming_upload_limit_removes_partial_file(monkeypatch, tmp_path):
 
     assert exc.value.status_code == 413
     assert not destination.exists()
+
+
+def test_local_boundary_rejects_untrusted_origin():
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
+
+    response = client.get("/api/health", headers={"host": "127.0.0.1:8100", "origin": "https://evil.example"})
+
+    assert response.status_code == 403
+
+
+def test_local_boundary_accepts_frontend_proxy_origin():
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
+
+    response = client.get("/api/health", headers={"host": "127.0.0.1:8100", "origin": "http://localhost:3100"})
+
+    assert response.status_code == 200
+
+
+def test_external_host_fails_closed_without_token(monkeypatch):
+    monkeypatch.delenv("VOICE_LAB_API_TOKEN", raising=False)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
+
+    response = client.get("/api/health", headers={"host": "voice.example"})
+
+    assert response.status_code == 403
+
+
+def test_external_api_requires_matching_operator_token(monkeypatch):
+    monkeypatch.setenv("VOICE_LAB_API_TOKEN", "test-only-token")
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
+
+    denied = client.get("/api/health", headers={"host": "voice.example", "authorization": "Bearer wrong"})
+    allowed = client.get("/api/health", headers={"host": "voice.example", "authorization": "Bearer test-only-token"})
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+
+
+def test_external_media_remains_local_only_even_with_token(monkeypatch):
+    monkeypatch.setenv("VOICE_LAB_API_TOKEN", "test-only-token")
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
+
+    response = client.get("/media/generated/missing.ogg", headers={"host": "voice.example", "authorization": "Bearer test-only-token"})
+
+    assert response.status_code == 403
+
+
+def test_reference_paths_are_limited_to_refs_and_voice_db(monkeypatch, tmp_path):
+    monkeypatch.setattr(backend, "ROOT", tmp_path)
+    refs = tmp_path / "refs"
+    voice_db = tmp_path / "voice_db"
+    refs.mkdir()
+    voice_db.mkdir()
+    ref_file = refs / "sample.wav"
+    voice_file = voice_db / "sample.wav"
+    outside = tmp_path / "outside.wav"
+    for path in (ref_file, voice_file, outside):
+        path.write_bytes(b"audio")
+
+    assert backend.resolve_allowed_reference_path(ref_file) == ref_file.resolve()
+    assert backend.resolve_allowed_reference_path(voice_file) == voice_file.resolve()
+    with pytest.raises(HTTPException):
+        backend.resolve_allowed_reference_path(outside)
+
+
+def test_remote_client_cannot_spoof_localhost_host_without_token(monkeypatch):
+    monkeypatch.delenv("VOICE_LAB_API_TOKEN", raising=False)
+    client = TestClient(
+        backend.app,
+        base_url="http://localhost:8100",
+        client=("203.0.113.25", 50000),
+    )
+
+    response = client.get("/api/health", headers={"host": "localhost:8100"})
+
+    assert response.status_code == 403
+
+
+def test_remote_client_localhost_host_still_requires_token(monkeypatch):
+    monkeypatch.setenv("VOICE_LAB_API_TOKEN", "test-only-token")
+    client = TestClient(
+        backend.app,
+        base_url="http://localhost:8100",
+        client=("203.0.113.25", 50000),
+    )
+
+    denied = client.get("/api/health", headers={"host": "localhost:8100"})
+    allowed = client.get(
+        "/api/health",
+        headers={"host": "localhost:8100", "authorization": "Bearer test-only-token"},
+    )
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200

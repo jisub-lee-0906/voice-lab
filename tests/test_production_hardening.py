@@ -37,7 +37,7 @@ def test_validate_generation_inputs_warns_when_prompt_matches_target(tmp_path):
 def test_generate_rejects_bad_dialogue_before_engine(monkeypatch, tmp_path):
     ref = tmp_path / "ref.wav"
     ref.write_bytes(b"wav")
-    client = TestClient(backend.app)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
 
     def fail_if_called(*args, **kwargs):
         raise AssertionError("engine should not be called for invalid dialogue")
@@ -54,7 +54,7 @@ def test_generate_rejects_bad_dialogue_before_engine(monkeypatch, tmp_path):
 
 
 def test_runtime_endpoint_reports_dependencies(monkeypatch):
-    client = TestClient(backend.app)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
 
     monkeypatch.setattr(backend, "wait_for_api", lambda api_url, timeout_seconds: True)
 

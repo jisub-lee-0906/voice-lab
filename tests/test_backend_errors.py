@@ -4,7 +4,9 @@ import backend.main as backend
 
 
 def test_reference_unexpected_errors_return_korean_detail(monkeypatch, tmp_path):
-    audio = tmp_path / "sample.wav"
+    monkeypatch.setattr(backend, "ROOT", tmp_path)
+    audio = tmp_path / "refs" / "sample.wav"
+    audio.parent.mkdir()
     audio.write_bytes(b"not really wav")
 
     def boom(*args, **kwargs):
@@ -12,7 +14,7 @@ def test_reference_unexpected_errors_return_korean_detail(monkeypatch, tmp_path)
 
     monkeypatch.setattr(backend, "probe_duration", lambda path: 20.0)
     monkeypatch.setattr(backend, "cut_reference", boom)
-    client = TestClient(backend.app)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
     response = client.post(
         "/api/reference",
         data={
@@ -29,7 +31,9 @@ def test_reference_unexpected_errors_return_korean_detail(monkeypatch, tmp_path)
 
 
 def test_generate_unexpected_errors_return_korean_detail(monkeypatch, tmp_path):
-    ref = tmp_path / "ref.wav"
+    monkeypatch.setattr(backend, "ROOT", tmp_path)
+    ref = tmp_path / "refs" / "ref.wav"
+    ref.parent.mkdir()
     ref.write_bytes(b"fake")
 
     monkeypatch.setattr(backend, "ensure_api", lambda *args, **kwargs: "ready")
@@ -38,7 +42,7 @@ def test_generate_unexpected_errors_return_korean_detail(monkeypatch, tmp_path):
         raise RuntimeError("tts failed")
 
     monkeypatch.setattr(backend, "generate_candidates", boom)
-    client = TestClient(backend.app)
+    client = TestClient(backend.app, base_url="http://127.0.0.1:8100", client=("127.0.0.1", 50000))
     response = client.post(
         "/api/generate",
         json={
